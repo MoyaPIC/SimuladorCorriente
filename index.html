@@ -4,182 +4,223 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0f172a">
-  <meta name="description" content="PWA para simulación y medición 4-20 mA mediante Web Serial y HC-05">
+  <meta name="description" content="Simulink - simulación y medición 4-20 mA mediante Web Serial y HC-05">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
-  <title>SimuladorCorriente 4–20 mA</title>
+  <title>Simulink · 4–20 mA</title>
 </head>
 <body>
 <header class="topbar">
-  <div><div class="eyebrow">MoyaPIC · Instrumentación</div><h1>SimuladorCorriente</h1></div>
+  <div>
+    <div class="eyebrow">MoyaPIC · Instrumentación</div>
+    <h1>Simulink</h1>
+  </div>
   <div class="top-actions">
     <span id="supportPill" class="pill">Web Serial</span>
-    <button id="installBtn" class="btn" hidden>Instalar</button>
-    <button id="themeBtn" class="btn">Tema</button>
-    <button id="connectBtn" class="btn primary">Conectar HC-05</button>
-    <button id="disconnectBtn" class="btn" disabled>Desconectar</button>
+    <button id="installBtn" class="icon-btn" hidden aria-label="Instalar">＋</button>
+    <button id="themeBtn" class="icon-btn" aria-label="Cambiar tema">◐</button>
   </div>
 </header>
 
-<main class="shell">
-  <section class="hero-grid">
-    <article class="card">
-      <div class="card-head"><div><span class="label">SALIDA</span><h2>Generador 4–20 mA</h2></div><label class="switch"><input id="outputEnabled" type="checkbox" checked> Habilitada</label></div>
+<main class="shell mobile-shell">
+  <section id="tab-output" class="panel active">
+    <article class="card output-card">
+      <div class="card-head">
+        <div><span class="label">SALIDA</span><h2>Generador 4–20 mA</h2></div>
+        <label class="switch"><input id="outputEnabled" type="checkbox" checked> Activa</label>
+      </div>
+
+      <div class="range-badge">Rango permitido: <b>4.0–20.0 mA</b></div>
+
       <div class="metrics">
         <div><span>Corriente</span><strong><b id="outMa">12.0</b><small>mA</small></strong></div>
         <div><span id="outEngName">Corriente</span><strong><b id="outEng">50.0</b><small id="outUnit">A</small></strong></div>
       </div>
-      <input id="manualSlider" class="range" type="range" min="4" max="20" step="0.1" value="12">
-      <div class="manual-row">
-        <label>Salida mA<input id="manualCurrent" type="number" min="4" max="20" step="0.1" value="12.0"></label>
-        <button id="minusBtn" class="btn">−0.1</button><button id="plusBtn" class="btn">+0.1</button>
-        <button id="applyCurrentBtn" class="btn primary">Aplicar</button>
-      </div>
-      <div class="button-row"><button id="fault36" class="btn warn">3.6 mA</button><button id="fault21" class="btn warn">21.0 mA</button><button id="faultOpen" class="btn danger">Salida abierta</button></div>
-    </article>
 
+      <div class="control-block">
+        <label class="control-title">Ajuste fino</label>
+        <input id="manualSlider" class="range" type="range" min="4" max="20" step="0.1" value="12">
+        <div class="stepper">
+          <button id="minusBtn" class="step-btn" aria-label="Restar 0.1 mA">−</button>
+          <label class="current-field"><span>Consigna</span><input id="manualCurrent" type="number" min="4" max="20" step="0.1" value="12.0"><small>mA</small></label>
+          <button id="plusBtn" class="step-btn" aria-label="Sumar 0.1 mA">+</button>
+        </div>
+        <button id="applyCurrentBtn" class="btn primary wide">Aplicar salida</button>
+      </div>
+
+      <div class="summary compact" id="outputScaleSummary"></div>
+    </article>
+  </section>
+
+  <section id="tab-input" class="panel">
     <article class="card">
-      <div class="card-head"><div><span class="label">ENTRADA</span><h2>Medidor 4–20 mA</h2></div><span id="livePill" class="pill muted">Sin datos</span></div>
+      <div class="card-head">
+        <div><span class="label">ENTRADA</span><h2>Medidor 4–20 mA</h2></div>
+        <span id="livePill" class="pill muted">Sin datos</span>
+      </div>
       <div class="metrics">
         <div><span>Corriente medida</span><strong><b id="inMa">—</b><small>mA</small></strong></div>
         <div><span id="inEngName">Corriente</span><strong><b id="inEng">—</b><small id="inUnit">A</small></strong></div>
       </div>
-      <div class="stats"><div><span>Mín</span><b id="statMin">—</b></div><div><span>Máx</span><b id="statMax">—</b></div><div><span>Prom</span><b id="statAvg">—</b></div><div><span>Muestras</span><b id="statCount">0</b></div></div>
+      <div class="stats">
+        <div><span>Mín</span><b id="statMin">—</b></div>
+        <div><span>Máx</span><b id="statMax">—</b></div>
+        <div><span>Prom</span><b id="statAvg">—</b></div>
+        <div><span>Muestras</span><b id="statCount">0</b></div>
+      </div>
+      <div class="button-grid two">
+        <button id="resetStatsBtn" class="btn">Reset estadísticas</button>
+        <button id="exportCsvBtn" class="btn">Exportar CSV</button>
+      </div>
+      <div class="summary compact" id="inputScaleSummary"></div>
     </article>
-  </section>
-
-  <nav class="tabs">
-    <button class="tab active" data-tab="operation">Operación</button>
-    <button class="tab" data-tab="ramps">Rampas</button>
-    <button class="tab" data-tab="profiles">Perfiles</button>
-    <button class="tab" data-tab="calibration">Calibración</button>
-    <button class="tab" data-tab="chart">Gráfica</button>
-    <button class="tab" data-tab="serial">Consola</button>
-  </nav>
-
-  <section id="tab-operation" class="panel active">
-    <div class="grid2">
-      <article class="card">
-        <div class="card-head"><div><span class="label">MODO</span><h2>Comunicación</h2></div></div>
-        <div class="form-grid">
-          <label>Modo<select id="transportMode"><option value="simulation">Simulación</option><option value="serial">Web Serial / HC-05</option></select></label>
-          <label>Baud rate<select id="baudRate"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select></label>
-          <label>Actualización simulación (ms)<input id="simInterval" type="number" min="100" max="5000" step="100" value="500"></label>
-          <label>Desvío simulado entrada (mA)<input id="simNoise" type="number" min="0" max="1" step="0.01" value="0.03"></label>
-        </div>
-        <div class="button-row"><button id="startSimulationBtn" class="btn primary">Iniciar simulación</button><button id="resetStatsBtn" class="btn">Reset estadísticas</button></div>
-        <p id="modeStatus" class="hint">Modo simulación listo para usar sin hardware.</p>
-      </article>
-      <article class="card">
-        <div class="card-head"><div><span class="label">ESCALA ACTIVA</span><h2>Conversión de ingeniería</h2></div></div>
-        <p class="hint">La salida y la entrada usan las escalas configuradas en Calibración. 4 mA representa el mínimo y 20 mA el máximo.</p>
-        <div class="summary" id="scaleSummary"></div>
-      </article>
-    </div>
   </section>
 
   <section id="tab-ramps" class="panel">
-    <div class="grid2">
-      <article class="card">
-        <div class="card-head"><div><span class="label">GENERACIÓN</span><h2>Editor de rampas</h2></div></div>
-        <div class="form-grid">
-          <label>Tipo<select id="rampType"><option value="linear">Lineal</option><option value="triangle">Triangular</option><option value="steps">Escalonada</option><option value="cycle">Ciclo</option><option value="custom">Multipunto</option></select></label>
-          <label>Repeticiones<input id="rampRepeats" type="number" min="1" max="999" value="1"></label>
-          <label>Valor inicial<input id="rampStart" type="number" step="0.1" value="0"></label>
-          <label>Valor final<input id="rampEnd" type="number" step="0.1" value="100"></label>
-          <label>Subida (s)<input id="rampRise" type="number" min="0.1" step="0.1" value="10"></label>
-          <label>Mantener arriba (s)<input id="rampHoldHigh" type="number" min="0" step="0.1" value="2"></label>
-          <label>Bajada (s)<input id="rampFall" type="number" min="0.1" step="0.1" value="10"></label>
-          <label>Mantener abajo (s)<input id="rampHoldLow" type="number" min="0" step="0.1" value="2"></label>
-          <label>Pasos<input id="rampSteps" type="number" min="2" max="100" value="8"></label>
-          <label>Actualización (ms)<input id="rampTick" type="number" min="100" max="5000" step="100" value="500"></label>
-        </div>
-        <div class="button-row"><button id="runRampBtn" class="btn primary">Ejecutar</button><button id="pauseRampBtn" class="btn">Pausar</button><button id="stopRampBtn" class="btn danger">Detener</button></div>
-        <p id="rampStatus" class="hint">La rampa trabaja en unidades de ingeniería y se convierte automáticamente a 4–20 mA.</p>
-      </article>
-      <article class="card">
-        <div class="card-head"><div><span class="label">MULTIPUNTO</span><h2>Puntos personalizados</h2></div><button id="addPointBtn" class="btn small">+ Punto</button></div>
-        <div class="table-wrap"><table><thead><tr><th>#</th><th>Tiempo s</th><th>Valor</th><th></th></tr></thead><tbody id="pointsBody"></tbody></table></div>
-      </article>
-    </div>
-  </section>
-
-  <section id="tab-profiles" class="panel">
-    <div class="grid2">
-      <article class="card">
-        <div class="card-head"><div><span class="label">MEMORIA</span><h2>Guardar perfil</h2></div></div>
-        <div class="form-grid single"><label>Nombre<input id="profileName" placeholder="Ej. Presión 0–10 bar"></label><label>Descripción<textarea id="profileDesc" rows="4"></textarea></label></div>
-        <div class="button-row"><button id="saveProfileBtn" class="btn primary">Guardar perfil</button><button id="exportProfilesBtn" class="btn">Exportar JSON</button><label class="btn file">Importar JSON<input id="importProfiles" type="file" accept="application/json"></label></div>
-      </article>
-      <article class="card">
-        <div class="card-head"><div><span class="label">BIBLIOTECA</span><h2>Perfiles guardados</h2></div></div>
-        <div id="profileList" class="profile-list"></div>
-      </article>
-    </div>
-  </section>
-
-  <section id="tab-calibration" class="panel">
-    <div class="grid2">
-      <article class="card">
-        <div class="card-head"><div><span class="label">SALIDA</span><h2>Escala y calibración</h2></div></div>
-        <div class="form-grid">
-          <label>Tipo de sensor<select id="outSensorType"></select></label>
-          <label>Unidad<input id="outSensorUnit" value="A"></label>
-          <label>Mínimo ingeniería<input id="outSensorMin" type="number" step="0.001" value="0"></label>
-          <label>Máximo ingeniería<input id="outSensorMax" type="number" step="0.001" value="100"></label>
-          <label>Corriente mínima mA<input id="outCurrentMin" type="number" step="0.1" value="4.0"></label>
-          <label>Corriente máxima mA<input id="outCurrentMax" type="number" step="0.1" value="20.0"></label>
-          <label>Medida real en punto bajo mA<input id="outMeasuredLow" type="number" step="0.001" value="4.000"></label>
-          <label>Medida real en punto alto mA<input id="outMeasuredHigh" type="number" step="0.001" value="20.000"></label>
-        </div>
-        <div id="outCalibrationInfo" class="cal-info"></div>
-        <div class="button-row"><button id="applyOutScaleBtn" class="btn primary">Aplicar escala salida</button><button id="sendOutCalBtn" class="btn">Enviar calibración</button></div>
-      </article>
-
-      <article class="card">
-        <div class="card-head"><div><span class="label">ENTRADA</span><h2>Escala y calibración</h2></div></div>
-        <div class="form-grid">
-          <label>Tipo de sensor<select id="inSensorType"></select></label>
-          <label>Unidad<input id="inSensorUnit" value="A"></label>
-          <label>Mínimo ingeniería<input id="inSensorMin" type="number" step="0.001" value="0"></label>
-          <label>Máximo ingeniería<input id="inSensorMax" type="number" step="0.001" value="100"></label>
-          <label>Corriente mínima mA<input id="inCurrentMin" type="number" step="0.1" value="4.0"></label>
-          <label>Corriente máxima mA<input id="inCurrentMax" type="number" step="0.1" value="20.0"></label>
-          <label>Lectura en punto bajo mA<input id="inMeasuredLow" type="number" step="0.001" value="4.000"></label>
-          <label>Lectura en punto alto mA<input id="inMeasuredHigh" type="number" step="0.001" value="20.000"></label>
-        </div>
-        <div id="inCalibrationInfo" class="cal-info"></div>
-        <div class="button-row"><button id="applyInScaleBtn" class="btn primary">Aplicar escala entrada</button><button id="sendInCalBtn" class="btn">Enviar calibración</button></div>
-      </article>
-    </div>
-  </section>
-
-  <section id="tab-chart" class="panel">
     <article class="card">
-      <div class="card-head"><div><span class="label">TIEMPO REAL</span><h2>Salida / Entrada</h2></div><div class="button-row"><button id="clearChartBtn" class="btn small">Limpiar</button><button id="exportCsvBtn" class="btn small">Exportar CSV</button></div></div>
-      <div class="chart-wrap"><canvas id="chart" width="1200" height="440"></canvas></div>
-      <div class="legend"><span><i class="line out"></i> Salida</span><span><i class="line inp"></i> Entrada</span></div>
+      <div class="card-head"><div><span class="label">RAMPAS</span><h2>Configuración</h2></div></div>
+      <div class="form-grid">
+        <label>Tipo<select id="rampType"><option value="linear">Lineal</option><option value="triangle">Triangular</option><option value="steps">Escalonada</option><option value="cycle">Ciclo</option><option value="custom">Multipunto</option></select></label>
+        <label>Repeticiones<input id="rampRepeats" type="number" min="1" max="999" value="1"></label>
+        <label>Valor inicial<input id="rampStart" type="number" step="0.1" value="0"></label>
+        <label>Valor final<input id="rampEnd" type="number" step="0.1" value="100"></label>
+        <label>Subida (s)<input id="rampRise" type="number" min="0.1" step="0.1" value="10"></label>
+        <label>Mantener arriba (s)<input id="rampHoldHigh" type="number" min="0" step="0.1" value="2"></label>
+        <label>Bajada (s)<input id="rampFall" type="number" min="0.1" step="0.1" value="10"></label>
+        <label>Mantener abajo (s)<input id="rampHoldLow" type="number" min="0" step="0.1" value="2"></label>
+        <label>Pasos<input id="rampSteps" type="number" min="2" max="100" value="8"></label>
+        <label>Actualización (ms)<input id="rampTick" type="number" min="100" max="5000" step="100" value="500"></label>
+      </div>
+      <div class="button-grid three">
+        <button id="runRampBtn" class="btn primary">▶ Ejecutar</button>
+        <button id="pauseRampBtn" class="btn">Ⅱ Pausar</button>
+        <button id="stopRampBtn" class="btn danger">■ Detener</button>
+      </div>
+      <p id="rampStatus" class="hint">La rampa usa la escala activa y nunca ordena fuera de 4.0–20.0 mA.</p>
+    </article>
+
+    <article class="card ramp-live-card">
+      <div class="card-head">
+        <div><span class="label">EJECUCIÓN</span><h2>Gráfica en vivo</h2></div>
+        <span id="rampProgressText" class="pill muted">0%</span>
+      </div>
+      <div class="ramp-live-values">
+        <div><span>Valor</span><b id="rampRunEng">—</b><small id="rampRunUnit"></small></div>
+        <div><span>Salida</span><b id="rampRunMa">—</b><small>mA</small></div>
+      </div>
+      <div class="progress"><i id="rampProgressFill"></i></div>
+      <div class="chart-wrap ramp-chart-wrap"><canvas id="rampChart" width="1000" height="420"></canvas></div>
+      <div class="legend"><span><i class="line out"></i> Consigna</span><span><i class="line inp"></i> Entrada</span></div>
+    </article>
+
+    <article class="card">
+      <div class="card-head"><div><span class="label">MULTIPUNTO</span><h2>Puntos personalizados</h2></div><button id="addPointBtn" class="btn small">+ Punto</button></div>
+      <div class="table-wrap"><table><thead><tr><th>#</th><th>Tiempo s</th><th>Valor</th><th></th></tr></thead><tbody id="pointsBody"></tbody></table></div>
     </article>
   </section>
 
-  <section id="tab-serial" class="panel">
-    <div class="grid2">
-      <article class="card">
-        <div class="card-head"><div><span class="label">PROTOCOLO</span><h2>Instrumento</h2></div></div>
-        <div class="button-row"><button id="getStatusBtn" class="btn">GET:STATUS</button><button id="uploadProfileBtn" class="btn primary">Subir perfil actual</button><label>N°<input id="profileNumber" class="mini-input" type="number" min="1" max="99" value="1"></label><button id="runDeviceProfileBtn" class="btn">Ejecutar</button></div>
-        <p class="hint">Comandos ASCII por líneas: SET:CURRENT, SET:OUTPUT, GET:STATUS y PROFILE:*.</p>
-      </article>
-      <article class="card terminal-card">
-        <div class="card-head"><div><span class="label">DIAGNÓSTICO</span><h2>Consola</h2></div><button id="clearTerminalBtn" class="btn small">Limpiar</button></div>
-        <pre id="terminal"></pre>
-        <div class="manual-row"><input id="terminalInput" placeholder="GET:STATUS"><button id="terminalSendBtn" class="btn primary">Enviar</button></div>
-      </article>
-    </div>
+  <section id="tab-profiles" class="panel">
+    <article class="card">
+      <div class="card-head"><div><span class="label">PERFILES</span><h2>Guardar configuración</h2></div></div>
+      <div class="form-grid single">
+        <label>Nombre<input id="profileName" placeholder="Ej. Presión 0–10 bar"></label>
+        <label>Descripción<textarea id="profileDesc" rows="3"></textarea></label>
+      </div>
+      <div class="button-grid two">
+        <button id="saveProfileBtn" class="btn primary">Guardar perfil</button>
+        <button id="exportProfilesBtn" class="btn">Exportar JSON</button>
+      </div>
+      <label class="btn file wide">Importar JSON<input id="importProfiles" type="file" accept="application/json"></label>
+    </article>
+    <article class="card">
+      <div class="card-head"><div><span class="label">BIBLIOTECA</span><h2>Perfiles guardados</h2></div></div>
+      <div id="profileList" class="profile-list"></div>
+    </article>
+  </section>
+
+  <section id="tab-calibration" class="panel">
+    <article class="card">
+      <div class="card-head"><div><span class="label">SALIDA</span><h2>Escala del sensor</h2></div></div>
+      <div class="form-grid">
+        <label>Tipo de sensor<select id="outSensorType"></select></label>
+        <label>Unidad<input id="outSensorUnit" value="A"></label>
+        <label>Mínimo ingeniería<input id="outSensorMin" type="number" step="0.001" value="0"></label>
+        <label>Máximo ingeniería<input id="outSensorMax" type="number" step="0.001" value="100"></label>
+        <label>Corriente mínima mA<input id="outCurrentMin" type="number" value="4.0" readonly></label>
+        <label>Corriente máxima mA<input id="outCurrentMax" type="number" value="20.0" readonly></label>
+        <label>Medida real en punto 4 mA<input id="outMeasuredLow" type="number" step="0.001" value="4.000"></label>
+        <label>Medida real en punto 20 mA<input id="outMeasuredHigh" type="number" step="0.001" value="20.000"></label>
+      </div>
+      <div id="outCalibrationInfo" class="cal-info"></div>
+      <div class="button-grid two"><button id="applyOutScaleBtn" class="btn primary">Aplicar salida</button><button id="sendOutCalBtn" class="btn">Enviar calibración</button></div>
+    </article>
+
+    <article class="card">
+      <div class="card-head"><div><span class="label">ENTRADA</span><h2>Escala del sensor</h2></div></div>
+      <div class="form-grid">
+        <label>Tipo de sensor<select id="inSensorType"></select></label>
+        <label>Unidad<input id="inSensorUnit" value="A"></label>
+        <label>Mínimo ingeniería<input id="inSensorMin" type="number" step="0.001" value="0"></label>
+        <label>Máximo ingeniería<input id="inSensorMax" type="number" step="0.001" value="100"></label>
+        <label>Corriente mínima mA<input id="inCurrentMin" type="number" value="4.0" readonly></label>
+        <label>Corriente máxima mA<input id="inCurrentMax" type="number" value="20.0" readonly></label>
+        <label>Lectura en punto 4 mA<input id="inMeasuredLow" type="number" step="0.001" value="4.000"></label>
+        <label>Lectura en punto 20 mA<input id="inMeasuredHigh" type="number" step="0.001" value="20.000"></label>
+      </div>
+      <div id="inCalibrationInfo" class="cal-info"></div>
+      <div class="button-grid two"><button id="applyInScaleBtn" class="btn primary">Aplicar entrada</button><button id="sendInCalBtn" class="btn">Enviar calibración</button></div>
+    </article>
+  </section>
+
+  <section id="tab-connect" class="panel">
+    <article class="card">
+      <div class="card-head"><div><span class="label">CONEXIÓN</span><h2>HC-05 / Simulación</h2></div></div>
+      <div class="form-grid">
+        <label>Modo<select id="transportMode"><option value="simulation">Simulación</option><option value="serial">Web Serial / HC-05</option></select></label>
+        <label>Baud rate<select id="baudRate"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select></label>
+        <label>Actualización simulación (ms)<input id="simInterval" type="number" min="100" max="5000" step="100" value="500"></label>
+        <label>Desvío simulado entrada (mA)<input id="simNoise" type="number" min="0" max="1" step="0.01" value="0.03"></label>
+      </div>
+      <div class="button-grid two">
+        <button id="connectBtn" class="btn primary">Conectar / iniciar</button>
+        <button id="disconnectBtn" class="btn" disabled>Desconectar</button>
+      </div>
+      <button id="startSimulationBtn" class="btn wide">Iniciar simulación</button>
+      <p id="modeStatus" class="hint">Modo simulación listo para usar sin hardware.</p>
+      <div class="summary" id="scaleSummary"></div>
+    </article>
+
+    <article class="card">
+      <div class="card-head"><div><span class="label">PROTOCOLO</span><h2>Perfiles en equipo</h2></div></div>
+      <div class="profile-device-row">
+        <label>Número de perfil<input id="profileNumber" type="number" min="1" max="99" value="1"></label>
+      </div>
+      <div class="button-grid two">
+        <button id="getStatusBtn" class="btn">GET:STATUS</button>
+        <button id="uploadProfileBtn" class="btn primary">Subir perfil actual</button>
+        <button id="runDeviceProfileBtn" class="btn wide">Ejecutar perfil en equipo</button>
+      </div>
+    </article>
+
+    <article class="card terminal-card">
+      <div class="card-head"><div><span class="label">DIAGNÓSTICO</span><h2>Consola serie</h2></div><button id="clearTerminalBtn" class="btn small">Limpiar</button></div>
+      <pre id="terminal"></pre>
+      <div class="terminal-send"><input id="terminalInput" placeholder="GET:STATUS"><button id="terminalSendBtn" class="btn primary">Enviar</button></div>
+    </article>
   </section>
 </main>
 
-<footer>SimuladorCorriente · Web Serial / HC-05 · <span id="version">v1.2.0</span></footer>
+<nav class="tabs bottom-tabs" aria-label="Secciones">
+  <button class="tab active" data-tab="output"><span class="tab-icon">↗</span><small>Salida</small></button>
+  <button class="tab" data-tab="input"><span class="tab-icon">↘</span><small>Entrada</small></button>
+  <button class="tab" data-tab="ramps"><span class="tab-icon">⌁</span><small>Rampas</small></button>
+  <button class="tab" data-tab="profiles"><span class="tab-icon">▣</span><small>Perfiles</small></button>
+  <button class="tab" data-tab="calibration"><span class="tab-icon">◎</span><small>Calibrar</small></button>
+  <button class="tab" data-tab="connect"><span class="tab-icon">⌁</span><small>Conexión</small></button>
+</nav>
+
+<footer>Simulink · Web Serial / HC-05 · <span id="version">v1.3.0</span></footer>
 <script src="app.js" defer></script>
 </body>
 </html>

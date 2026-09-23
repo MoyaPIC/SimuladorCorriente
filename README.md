@@ -32,3 +32,14 @@ PWA para operar un instrumento de simulación y medición de señales 4–20 mA 
 ## Uso
 
 Para Web Serial se requiere HTTPS o localhost y un navegador compatible. En Android, emparejar primero el HC-05 con el sistema y luego abrir la PWA en Chrome compatible.
+
+## Despliegue en Netlify
+
+Este repositorio está preparado para despliegue continuo desde Netlify.
+
+- Rama de producción: `main`
+- Build command: ninguno
+- Publish directory: `.`
+- Configuración: `netlify.toml`
+
+Netlify debe quedar conectado directamente a `MoyaPIC/SimuladorCorriente`. Cada cambio en `main` puede generar un nuevo despliegue automáticamente.

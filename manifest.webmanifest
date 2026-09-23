@@ -1,6 +1,6 @@
 {
-  "name":"SimuladorCorriente 4-20 mA",
-  "short_name":"SimCorriente",
+  "name":"Simulink 4-20 mA",
+  "short_name":"Simulink",
   "start_url":"./",
   "scope":"./",
   "display":"standalone",

@@ -53,7 +53,7 @@ static const uint8_t LOOP_ERROR_ACTIVE_LEVEL = HIGH;
 static const bool LOOP_ERROR_USE_PULLUP = false;
 
 // true = passive buzzer driven with tone(); false = active buzzer driven HIGH/LOW.
-static const bool BUZZER_PASSIVE = true;
+static const bool BUZZER_PASSIVE = false;
 static const uint16_t BUZZER_FREQ_HZ = 2500;
 
 // --------------------------- I2C ------------------------------
@@ -62,13 +62,14 @@ static const uint8_t ADS1115_ADDR = 0x48;
 static const uint8_t EEPROM_ADDR  = 0x50;
 
 // ---------------------- Serial / timing -----------------------
-static const char FIRMWARE_VERSION[] = "1.0.0";
+static const char FIRMWARE_VERSION[] = "1.0.1";
 static const uint32_t USB_BAUD = 115200UL;
 static const uint32_t BT_BAUD  = 9600UL;
 
 static const uint16_t STATUS_PERIOD_MS = 500;
 static const uint16_t ADC_PERIOD_MS    = 25;
 static const uint16_t LOOP_DEBOUNCE_MS = 30;
+static const uint32_t LOOP_ARM_TIME_MS = 5000UL;
 static const uint16_t PROFILE_DAC_UPDATE_MS = 20;
 
 // ---------------------- 4-20 mA limits ------------------------
@@ -143,7 +144,9 @@ bool inputValid = false;
 
 bool loopOpen = false;
 bool loopRawLast = false;
+bool loopAlarmArmed = false;
 uint32_t loopRawChangedMs = 0;
+uint32_t loopClosedSinceMs = 0;
 
 uint32_t lastStatusMs = 0;
 uint32_t lastAdcMs = 0;
@@ -239,9 +242,10 @@ static void buzzerBeep(uint16_t durationMs) {
 static void buzzerTask() {
   uint32_t now = millis();
 
-  if (loopOpen) {
-    bool phaseOn = (now % 1000UL) < 150UL;
-    buzzerSet(phaseOn);
+  // El buzzer de error de lazo solo actúa si el sistema ya fue armado
+  // por haber detectado carga conectada durante más de 5 s.
+  if (loopAlarmArmed && loopOpen) {
+    buzzerSet(true);
     return;
   }
 
@@ -652,6 +656,7 @@ static void loopErrorTask() {
   bool raw = readLoopErrorRaw();
   uint32_t now = millis();
 
+  // Debounce de la entrada D8.
   if (raw != loopRawLast) {
     loopRawLast = raw;
     loopRawChangedMs = now;
@@ -660,8 +665,26 @@ static void loopErrorTask() {
   if (raw != loopOpen &&
       (uint32_t)(now - loopRawChangedMs) >= LOOP_DEBOUNCE_MS) {
     loopOpen = raw;
-    if (loopOpen) buzzerBeep(250);
-    else buzzerBeep(60);
+
+    if (!loopOpen) {
+      // Carga conectada: comienza el tiempo de validación.
+      loopClosedSinceMs = now;
+    } else {
+      // Carga desconectada: no se arma aquí. Si nunca hubo una
+      // conexión válida de >5 s, el buzzer debe permanecer apagado.
+      loopClosedSinceMs = 0;
+    }
+  }
+
+  // Armado permanente después de 5 s continuos con carga conectada.
+  // Si la placa arrancó desconectada, queda desarmada hasta que
+  // posteriormente detecte una conexión estable durante >5 s.
+  if (!loopAlarmArmed && !loopOpen) {
+    if (loopClosedSinceMs == 0) loopClosedSinceMs = now;
+
+    if ((uint32_t)(now - loopClosedSinceMs) >= LOOP_ARM_TIME_MS) {
+      loopAlarmArmed = true;
+    }
   }
 }
 
@@ -682,6 +705,9 @@ static void sendStatus(Stream &s) {
 
   s.print(F(":LOOP="));
   s.print(loopOpen ? F("OPEN") : F("CLOSED"));
+
+  s.print(F(":ARM="));
+  s.print(loopAlarmArmed ? 1 : 0);
 
   s.print(F(":RUN="));
   s.print(profileRunning ? 1 : 0);
@@ -1322,6 +1348,8 @@ void setup() {
   loopRawLast = readLoopErrorRaw();
   loopOpen = loopRawLast;
   loopRawChangedMs = millis();
+  loopAlarmArmed = false;
+  loopClosedSinceMs = loopOpen ? 0 : millis();
 
   outputEnabled = true;
   outputSetpointMa = 12.0f;

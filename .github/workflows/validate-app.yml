@@ -1,0 +1,18 @@
+name: Validate Simulink app
+
+on:
+  push:
+    paths:
+      - "app.js"
+      - "index.html"
+      - "styles.css"
+      - ".github/workflows/validate-app.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check JavaScript syntax
+        run: node --check app.js

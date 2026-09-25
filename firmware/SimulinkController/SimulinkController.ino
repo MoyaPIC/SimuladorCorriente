@@ -138,7 +138,7 @@ static const uint8_t EEPROM_ADDR  = 0x50;
 // ============================================================================
 // USB_BAUD se usa solo para monitor serie/diagnóstico.
 // BT_BAUD debe coincidir con la velocidad configurada en el HC-05.
-static const char FIRMWARE_VERSION[] = "1.0.3";
+static const char FIRMWARE_VERSION[] = "1.0.4";
 static const uint32_t USB_BAUD = 115200UL;
 static const uint32_t BT_BAUD  = 9600UL;
 
@@ -1554,19 +1554,22 @@ static void serviceInput(Stream &s, char *buf, uint8_t &len) {
   while (s.available()) {
     char c = (char)s.read();
 
-    if (c == '' || c == '
-') {
+    // Aceptamos tanto CR (0x0D) como LF (0x0A) como fin de comando.
+    // Esto permite trabajar con CR, LF o CR+LF desde HC-05 y monitor serie.
+    if (c == '\r' || c == '\n') {
       if (len > 0) {
-        buf[len] = 0;
-        processCommand(s, buf);
-        len = 0;
+        buf[len] = 0;              // Termina la cadena C con NUL.
+        processCommand(s, buf);    // Procesa la línea completa.
+        len = 0;                   // Prepara el buffer para el próximo comando.
       }
       continue;
     }
 
+    // Guarda el carácter si todavía queda espacio en el buffer.
     if (len < LINE_BUF_SIZE - 1) {
       buf[len++] = c;
     } else {
+      // Si la línea supera el tamaño permitido se descarta completa.
       len = 0;
       replyError(s, F("LINE_TOO_LONG"));
     }

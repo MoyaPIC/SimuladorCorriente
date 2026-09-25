@@ -3,18 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#c9252d">
   <meta name="description" content="Simulink - simulación y medición 4-20 mA mediante Web Serial y HC-05">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.4.0">
+  <link rel="stylesheet" href="styles.css?v=1.4.1">
   <title>Simulink · 4–20 mA</title>
 </head>
 <body>
 <header class="topbar">
   <div>
     <div class="eyebrow">UconnectME · Instrumentación</div>
-    <h1>Simulink <small style="font-size:11px;opacity:.65">v1.4.0</small></h1>
+    <h1>Simulink <small style="font-size:11px;opacity:.65">v1.4.1</small></h1>
   </div>
   <div class="top-actions">
     <span id="supportPill" class="pill">Web Serial</span>
@@ -220,6 +220,18 @@
       <div class="card-head"><div><span class="label">BIBLIOTECA</span><h2>Ensayos guardados</h2></div></div>
       <div id="profileList" class="profile-list"></div>
     </article>
+    <article class="card device-memory-card">
+      <div class="card-head">
+        <div>
+          <span class="label">INSTRUMENTO</span>
+          <h2>Memoria 24C512</h2>
+          <p class="card-subtitle">16 espacios para ejecutar ensayos sin depender del teléfono.</p>
+        </div>
+        <button id="refreshDeviceProfilesBtn" class="btn small" type="button">Actualizar</button>
+      </div>
+      <div id="deviceMemoryStatus" class="summary compact">Conectá el HC-05 y presioná Actualizar para leer la memoria del equipo.</div>
+      <div id="deviceProfileList" class="device-slot-grid"></div>
+    </article>
   </section>
 
   <section id="tab-calibration" class="panel">
@@ -275,24 +287,37 @@
       <div class="summary" id="scaleSummary"></div>
     </article>
 
-    <article class="card">
-      <div class="card-head"><div><span class="label">PROTOCOLO</span><h2>Perfiles en equipo</h2></div></div>
-      <div class="profile-device-row">
-        <label>Número de perfil<input id="profileNumber" type="number" min="1" max="99" value="1"></label>
-      </div>
-      <div class="button-grid two">
-        <button id="getStatusBtn" class="btn">GET:STATUS</button>
-        <button id="uploadProfileBtn" class="btn primary">Subir perfil actual</button>
-        <button id="runDeviceProfileBtn" class="btn wide">Ejecutar perfil en equipo</button>
-      </div>
-    </article>
-
     <article class="card terminal-card">
       <div class="card-head"><div><span class="label">DIAGNÓSTICO</span><h2>Consola serie</h2></div><button id="clearTerminalBtn" class="btn small">Limpiar</button></div>
       <pre id="terminal"></pre>
       <div class="terminal-send"><input id="terminalInput" placeholder="GET:STATUS"><button id="terminalSendBtn" class="btn primary">Enviar</button></div>
     </article>
   </section>
+<dialog id="deviceSaveDialog" class="device-dialog">
+  <form method="dialog" class="device-dialog-card">
+    <div class="dialog-head">
+      <div>
+        <span class="label">MEMORIA DEL EQUIPO</span>
+        <h2>Guardar ensayo</h2>
+      </div>
+      <button id="closeDeviceSaveDialog" class="icon-btn dialog-close" value="cancel" aria-label="Cerrar">×</button>
+    </div>
+    <div id="deviceSaveSummary" class="summary"></div>
+    <label class="dialog-field">
+      Elegí un slot
+      <select id="deviceSlotSelect"></select>
+    </label>
+    <div id="deviceSlotWarning" class="slot-warning"></div>
+    <div id="deviceUploadProgress" class="upload-progress" hidden>
+      <span id="deviceUploadText">Preparando...</span>
+      <div class="progress"><i id="deviceUploadFill"></i></div>
+    </div>
+    <div class="button-grid two dialog-actions">
+      <button class="btn" value="cancel">Cancelar</button>
+      <button id="confirmDeviceSaveBtn" class="btn primary" type="button">Guardar en memoria</button>
+    </div>
+  </form>
+</dialog>
 </main>
 
 <nav class="tabs bottom-tabs" aria-label="Secciones">
@@ -304,7 +329,7 @@
   <button class="tab" data-tab="connect"><span class="tab-icon">⌁</span><small>Conexión</small></button>
 </nav>
 
-<footer>Simulink · Web Serial / HC-05 · <span id="version">v1.4.0</span></footer>
-<script src="app.js?v=1.4.0" defer></script>
+<footer>Simulink · Web Serial / HC-05 · <span id="version">v1.4.1</span></footer>
+<script src="app.js?v=1.4.1" defer></script>
 </body>
 </html>

@@ -9,6 +9,8 @@ const TYPES={
   voltage:{name:'Tensión',unit:'V',min:0,max:400},
   custom:{name:'Personalizada',unit:'u',min:0,max:100}
 };
+const SPP_UUID="00001101-0000-1000-8000-00805f9b34fb";
+let serialReadBuffer="";
 const clone=x=>JSON.parse(JSON.stringify(x));
 const makeScale=(type='current')=>({...clone(TYPES[type]),type,currentMin:4,currentMax:20,measuredLow:4,measuredHigh:20});
 const state={
@@ -50,75 +52,104 @@ function simulateCommand(line){
   return 'OK';
 }
 function handleLine(line){if(!line)return;log(line,'RX');if(line.startsWith('DATA:')){const mo=line.match(/OUT=([-\d.]+)/),mi=line.match(/IN=([-\d.]+)/);if(mo)state.outputMa=Number(mo[1]);if(mi)addInput(Number(mi[1]));renderMain();}}
-function formatPortInfo(port){
-  try{
-    const info=port?.getInfo?.()||{};
-    const bt=info.bluetoothServiceClassId;
-    const btText=bt!=null?String(bt):'no informado';
-    return `Servicio Bluetooth: ${btText}`;
-  }catch(e){return 'Servicio Bluetooth: no disponible';}
-}
 function setSerialDiag(msg){const el=$('serialDiag');if(el)el.textContent='Diagnóstico: '+msg;}
 async function connectSerial(){
   if($('transportMode').value==='simulation'){startSimulation();return;}
-  stopSimulation();
-  state.connected=false;
-  $('connectBtn').disabled=true;
-  setSerialDiag('buscando HC-05 SPP…');
-  if(!('serial'in navigator)){
-    $('connectBtn').disabled=false;
-    setSerialDiag('Web Serial no está disponible en este navegador.');
-    alert('Web Serial no está disponible. En Android se requiere Chrome 138 o superior y abrir la app por HTTPS.');
+  if(state.connected){await disconnectSerial();return;}
+  if(!('serial' in navigator)){
+    alert('Web Serial no está disponible. Usá Chrome actualizado en Android o PC.');
+    setSerialDiag('Web Serial no disponible en este navegador.');
     return;
   }
+  stopSimulation();
+  serialReadBuffer='';
+  $('connectBtn').disabled=true;
+  setSerialDiag('abriendo selector Bluetooth SPP…');
   try{
-    const sppId=0x1101;
-    state.port=await navigator.serial.requestPort({filters:[{bluetoothServiceClassId:sppId}]});
-    const infoText=formatPortInfo(state.port);
-    setSerialDiag('puerto seleccionado · '+infoText);
-    log(infoText,'INFO');
-    await state.port.open({
-      baudRate:Number($('baudRate').value)||9600,
-      dataBits:8,
-      stopBits:1,
-      parity:'none',
-      flowControl:'none',
-      bufferSize:255
-    });
+    try{
+      state.port=await navigator.serial.requestPort({allowedBluetoothServiceClassIds:[SPP_UUID]});
+    }catch(e){
+      if(e.name==='TypeError'){
+        log('El navegador no acepta allowedBluetoothServiceClassIds; se abre selector sin filtro.','INFO');
+        state.port=await navigator.serial.requestPort();
+      }else{
+        throw e;
+      }
+    }
+
+    await state.port.open({baudRate:Number($('baudRate').value)||9600});
+
+    const decoder=new TextDecoderStream();
+    state.port.readable.pipeTo(decoder.writable).catch(()=>{});
+    state.reader=decoder.readable.getReader();
     state.writer=state.port.writable.getWriter();
-    state.reader=state.port.readable.getReader();
+
+    state.simulation=false;
     state.connected=true;
     $('connectBtn').disabled=true;
     $('disconnectBtn').disabled=false;
     $('supportPill').textContent='HC-05 conectado';
     $('supportPill').className='pill ok';
-    $('modeStatus').textContent='Conexión Web Serial activa.';
-    setSerialDiag('conectado · '+infoText+' · '+($('baudRate').value||9600)+' baud · 8N1');
+    $('modeStatus').textContent='HC-05 conectado mediante Bluetooth SPP.';
+    setSerialDiag('conectado · SPP 0x1101 · '+(Number($('baudRate').value)||9600)+' baud');
     setPill('En línea',true);
-    send('GET:STATUS');
+
     readLoop();
+    await send('GET:STATUS');
   }catch(e){
+    log(e.message||String(e),'ERR');
     state.port=null;
+    state.reader=null;
+    state.writer=null;
     state.connected=false;
     $('connectBtn').disabled=false;
     $('disconnectBtn').disabled=true;
-    const name=e?.name||'Error';
-    const msg=e?.message||String(e);
-    setSerialDiag(name+': '+msg);
-    log(name+': '+msg,'ERR');
-    if(name==='NotFoundError'){
-      $('modeStatus').textContent='No se seleccionó un puerto SPP. Verificá que HC-05 esté vinculado, encendido y visible para Chrome.';
-    }else if(name==='NetworkError'){
-      $('modeStatus').textContent='Chrome encontró el puerto pero no pudo abrir el enlace RFCOMM. Cerrá otras apps que puedan estar usando el HC-05 y reintentá.';
-    }else if(name==='InvalidStateError'){
-      $('modeStatus').textContent='El puerto ya estaba abierto o quedó en un estado anterior. Desconectá y volvé a intentar.';
+
+    if(e.name==='NotFoundError'){
+      setSerialDiag('selección cancelada o HC-05 no disponible en el selector.');
+      $('modeStatus').textContent='No se seleccionó el HC-05.';
     }else{
-      $('modeStatus').textContent='Error de conexión: '+msg;
+      setSerialDiag((e.name||'Error')+': '+(e.message||String(e)));
+      $('modeStatus').textContent='No se pudo conectar: '+(e.message||String(e));
+      alert('No se pudo conectar: '+(e.message||String(e)));
     }
   }
 }
-async function readLoop(){let buffer='';const dec=new TextDecoder();try{while(state.reader){const {value,done}=await state.reader.read();if(done)break;buffer+=dec.decode(value,{stream:true});let lines=buffer.split(/\r?\n/);buffer=lines.pop();lines.forEach(handleLine);}}catch(e){log(e.message,'ERR');}}
-async function disconnectSerial(){stopSimulation();try{if(state.reader){await state.reader.cancel();state.reader.releaseLock();}if(state.writer){state.writer.releaseLock();}if(state.port){await state.port.close();}}catch(e){log(e.message||String(e),'ERR');}state.reader=state.writer=state.port=null;state.connected=false;$('connectBtn').disabled=false;$('disconnectBtn').disabled=true;$('supportPill').textContent='Web Serial';$('supportPill').className='pill';$('modeStatus').textContent='Desconectado.';setSerialDiag('sin conexión.');setPill('Sin datos');}
+async function disconnectSerial(){
+  stopSimulation();
+  state.connected=false;
+  try{if(state.reader){await state.reader.cancel();state.reader.releaseLock();}}catch(e){}
+  try{if(state.writer){state.writer.releaseLock();}}catch(e){}
+  try{if(state.port)await state.port.close();}catch(e){}
+  state.reader=state.writer=state.port=null;
+  serialReadBuffer='';
+  $('connectBtn').disabled=false;
+  $('disconnectBtn').disabled=true;
+  $('supportPill').textContent='Web Serial';
+  $('supportPill').className='pill';
+  $('modeStatus').textContent='Desconectado.';
+  setSerialDiag('sin conexión.');
+  setPill('Sin datos');
+}
+async function readLoop(){
+  try{
+    while(state.reader){
+      const {value,done}=await state.reader.read();
+      if(done)break;
+      serialReadBuffer+=value;
+      let p;
+      while((p=serialReadBuffer.indexOf('\n'))>=0){
+        const line=serialReadBuffer.slice(0,p).trim();
+        serialReadBuffer=serialReadBuffer.slice(p+1);
+        handleLine(line);
+      }
+    }
+  }catch(e){
+    log(e.message||String(e),'ERR');
+  }finally{
+    if(state.connected&&!state.simulation)disconnectSerial();
+  }
+}
 function addInput(ma){if(!Number.isFinite(ma))return;state.inputMa=ma;state.samples.push({t:Date.now(),ma});if(state.samples.length>500)state.samples.shift();state.chart.push({t:Date.now(),out:state.outputMa,inp:ma});if(state.chart.length>300)state.chart.shift();}
 function startSimulation(){stopSimulation();state.simulation=true;state.connected=true;$('transportMode').value='simulation';$('connectBtn').disabled=true;$('disconnectBtn').disabled=false;$('supportPill').textContent='Simulación activa';$('supportPill').className='pill ok';setPill('Simulando',true);$('modeStatus').textContent='Simulación activa: la entrada sigue la salida con el desvío configurado.';const tick=()=>{state.simPhase+=0.35;const noise=Number($('simNoise').value)||0;let ma=state.outputOpen?4:clamp(state.outputMa+Math.sin(state.simPhase)*noise,4,20);addInput(ma);renderMain();};tick();state.simTimer=setInterval(tick,Math.max(100,Number($('simInterval').value)||500));}
 function stopSimulation(){if(state.simTimer)clearInterval(state.simTimer);state.simTimer=null;state.simulation=false;}
@@ -213,10 +244,9 @@ function init(){
   $('connectBtn').disabled=false;$('disconnectBtn').disabled=true;
   $('supportPill').textContent=('serial'in navigator)?'Web Serial disponible':'Web Serial no disponible';
   $('modeStatus').textContent=('serial'in navigator)?'Web Serial listo. El HC-05 debe estar vinculado previamente en Android.':'Web Serial no disponible en este navegador.';
-  setSerialDiag(('serial'in navigator)?'esperando selección del puerto SPP 0x1101.':'API Web Serial ausente.');
+  setSerialDiag(('serial'in navigator)?'listo para seleccionar HC-05 SPP.':'API Web Serial ausente.');
   if('serial'in navigator){
-    navigator.serial.addEventListener('connect',e=>{try{log('Puerto Bluetooth disponible · '+formatPortInfo(e.target),'INFO');}catch(_){}});
-    navigator.serial.addEventListener('disconnect',e=>{try{log('Puerto Bluetooth desconectado','INFO');}catch(_){}if(e.target===state.port){state.connected=false;$('connectBtn').disabled=false;$('disconnectBtn').disabled=true;$('supportPill').textContent='Desconectado';$('supportPill').className='pill';setSerialDiag('el enlace RFCOMM se desconectó.');}});
+    navigator.serial.addEventListener('disconnect',e=>{if(e.target===state.port){log('HC-05 desconectado','INFO');state.connected=false;$('connectBtn').disabled=false;$('disconnectBtn').disabled=true;$('supportPill').textContent='Desconectado';$('supportPill').className='pill';setSerialDiag('el enlace Bluetooth se desconectó.');}});
   }
   if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 }

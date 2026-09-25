@@ -166,8 +166,45 @@ function updateScaleCards(){
   const out=$('outputScaleSummary'),inp=$('inputScaleSummary');
   if(out)out.innerHTML=`<b>${state.outScale.name}</b><br>${fmt(state.outScale.min,2)} a ${fmt(state.outScale.max,2)} ${state.outScale.unit} ↔ 4.0–20.0 mA`;
   if(inp)inp.innerHTML=`<b>${state.inScale.name}</b><br>${fmt(state.inScale.min,2)} a ${fmt(state.inScale.max,2)} ${state.inScale.unit} ↔ 4.0–20.0 mA`;
-  if($('rampRunUnit'))$('rampRunUnit').textContent=state.outScale.unit;
+  if($('rampRunUnit'))$('rampRunUnit').textContent=state.outScale.unit;if($('rampStartUnit'))$('rampStartUnit').textContent=state.outScale.unit;if($('rampEndUnit'))$('rampEndUnit').textContent=state.outScale.unit;
 }
+const RAMP_META={
+  linear:{label:'Lineal',guide:'La salida avanza de forma continua desde el valor inicial al final.',fields:['start','end','rise','repeats','tick']},
+  triangle:{label:'Triangular',guide:'La salida sube al valor final y luego vuelve al inicial.',fields:['start','end','rise','fall','repeats','tick']},
+  steps:{label:'Escalonada',guide:'La salida recorre el rango mediante una cantidad definida de escalones.',fields:['start','end','rise','steps','repeats','tick']},
+  cycle:{label:'Ciclo',guide:'Sube, mantiene el máximo, baja y mantiene el mínimo antes de repetir.',fields:['start','end','rise','holdHigh','fall','holdLow','repeats','tick']},
+  custom:{label:'Multipunto',guide:'Definí libremente cada punto de tiempo y valor.',fields:['repeats','tick']}
+};
+function updateRampEditor(){
+  const type=$('rampType').value,meta=RAMP_META[type]||RAMP_META.linear;
+  document.querySelectorAll('.ramp-type-btn').forEach(b=>b.classList.toggle('active',b.dataset.rampType===type));
+  document.querySelectorAll('[data-ramp-field]').forEach(el=>el.hidden=!meta.fields.includes(el.dataset.rampField));
+  $('customPointsCard').hidden=type!=='custom';
+  $('rampTypeBadge').textContent=meta.label;
+  $('rampGuideText').textContent=meta.guide;
+  $('rampRiseLabel').textContent=type==='steps'?'Duración total':'Tiempo de subida';
+  $('rampStartUnit').textContent=state.outScale.unit;
+  $('rampEndUnit').textContent=state.outScale.unit;
+  drawRampPreview();
+}
+function drawRampPreview(){
+  const c=$('rampPreview');if(!c)return;
+  const ctx=c.getContext('2d'),w=c.width,h=c.height;
+  ctx.clearRect(0,0,w,h);
+  const r=getRampConfig(),seq=buildRamp(r);
+  const values=seq.length?seq:[r.start||0];
+  const min=Number(state.outScale.min),max=Number(state.outScale.max),span=(max-min)||1;
+  ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--border').trim()||'#dfe2e7';
+  ctx.lineWidth=1;ctx.beginPath();
+  for(let i=0;i<=4;i++){const y=24+(h-48)*i/4;ctx.moveTo(48,y);ctx.lineTo(w-18,y);}ctx.stroke();
+  ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#c9252d';
+  ctx.lineWidth=4;ctx.beginPath();
+  values.forEach((v,i)=>{const x=48+(w-70)*(values.length===1?0:i/(values.length-1));const y=24+(h-48)*(1-(Number(v)-min)/span);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+  ctx.stroke();
+  const duration=((values.length*Math.max(100,r.tick))/1000)*Math.max(1,r.repeats);
+  $('rampSummary').innerHTML='<b>'+RAMP_META[r.type].label+'</b><span>'+fmt(r.start,2)+' → '+fmt(r.end,2)+' '+state.outScale.unit+'</span><span>'+Math.max(1,r.repeats)+' rep.</span><span>≈ '+fmt(duration,1)+' s</span>';
+}
+
 function updateRampProgress(){
   if(!state.rampState){if($('rampProgressText'))$('rampProgressText').textContent='0%';if($('rampProgressFill'))$('rampProgressFill').style.width='0%';return;}
   const rs=state.rampState,total=Math.max(1,rs.r.repeats*rs.seq.length),done=rs.rep*rs.seq.length+rs.i,p=Math.min(100,Math.round(done*100/total));
@@ -185,7 +222,7 @@ function drawRampChart(){
 }
 
 function getRampConfig(){return{type:$('rampType').value,repeats:Number($('rampRepeats').value)||1,start:Number($('rampStart').value),end:Number($('rampEnd').value),rise:Number($('rampRise').value)||1,holdHigh:Number($('rampHoldHigh').value)||0,fall:Number($('rampFall').value)||1,holdLow:Number($('rampHoldLow').value)||0,steps:Number($('rampSteps').value)||8,tick:Number($('rampTick').value)||500,points:clone(state.points)};}
-function setRampConfig(r){if(!r)return;[['rampType','type'],['rampRepeats','repeats'],['rampStart','start'],['rampEnd','end'],['rampRise','rise'],['rampHoldHigh','holdHigh'],['rampFall','fall'],['rampHoldLow','holdLow'],['rampSteps','steps'],['rampTick','tick']].forEach(([id,k])=>{if(r[k]!=null)$(id).value=r[k];});state.points=clone(r.points||state.points);renderPoints();}
+function setRampConfig(r){if(!r)return;[['rampType','type'],['rampRepeats','repeats'],['rampStart','start'],['rampEnd','end'],['rampRise','rise'],['rampHoldHigh','holdHigh'],['rampFall','fall'],['rampHoldLow','holdLow'],['rampSteps','steps'],['rampTick','tick']].forEach(([id,k])=>{if(r[k]!=null)$(id).value=r[k];});state.points=clone(r.points||state.points);renderPoints();updateRampEditor();}
 function buildRamp(r){const tick=r.tick/1000,arr=[];const pushSeg=(a,b,d)=>{const n=Math.max(1,Math.round(d/tick));for(let i=0;i<=n;i++)arr.push(a+(b-a)*i/n);};const hold=(v,d)=>{const n=Math.max(0,Math.round(d/tick));for(let i=0;i<n;i++)arr.push(v);};
   if(r.type==='linear')pushSeg(r.start,r.end,r.rise);
   else if(r.type==='triangle'){pushSeg(r.start,r.end,r.rise);pushSeg(r.end,r.start,r.fall);}
@@ -211,10 +248,10 @@ function runRamp(){
     updateRampProgress();drawRampChart();
   },Math.max(100,r.tick));
 }
-function renderPoints(){$('pointsBody').innerHTML='';state.points.forEach((p,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td><input data-i="${i}" data-k="t" type="number" step="0.1" value="${p.t}"></td><td><input data-i="${i}" data-k="v" type="number" step="0.1" value="${p.v}"></td><td><button class="btn small" data-del="${i}">×</button></td>`;$('pointsBody').appendChild(tr);});}
-function renderProfiles(){const box=$('profileList');box.innerHTML='';if(!state.profiles.length){box.innerHTML='<p class="hint">No hay perfiles guardados.</p>';return;}state.profiles.forEach((p,i)=>{const d=document.createElement('div');d.className='profile-item';d.innerHTML=`<h3>${escapeHtml(p.name||'Perfil')}</h3><p>${escapeHtml(p.desc||'')} · ${escapeHtml(p.scale?.name||'')} ${p.scale?`${p.scale.min}–${p.scale.max} ${p.scale.unit}`:''}</p><div class="profile-actions"><button class="btn small" data-load="${i}">Cargar</button><button class="btn small primary" data-run="${i}">Ejecutar</button><button class="btn small" data-upload="${i}">Subir equipo</button><button class="btn small danger" data-delete="${i}">Eliminar</button></div>`;box.appendChild(d);});}
+function renderPoints(){$('pointsBody').innerHTML='';state.points.forEach((p,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td><input data-i="${i}" data-k="t" type="number" step="0.1" value="${p.t}"></td><td><input data-i="${i}" data-k="v" type="number" step="0.1" value="${p.v}"></td><td><button class="btn small" data-del="${i}">×</button></td>`;$('pointsBody').appendChild(tr);});drawRampPreview();}
+function renderProfiles(){const box=$('profileList');box.innerHTML='';if(!state.profiles.length){box.innerHTML='<p class="hint">Todavía no hay ensayos guardados. Creá una rampa y guardala para reutilizarla o cargarla en el equipo.</p>';return;}state.profiles.forEach((p,i)=>{const d=document.createElement('div');d.className='profile-item';d.innerHTML=`<h3>${escapeHtml(p.name||'Ensayo')}</h3><p>${escapeHtml(p.desc||'')} · ${escapeHtml(p.scale?.name||'')} ${p.scale?`${p.scale.min}–${p.scale.max} ${p.scale.unit}`:''}</p><div class="profile-actions"><button class="btn small" data-load="${i}">Cargar</button><button class="btn small primary" data-run="${i}">Ejecutar</button><button class="btn small" data-upload="${i}">Subir equipo</button><button class="btn small danger" data-delete="${i}">Eliminar</button></div>`;box.appendChild(d);});}
 function escapeHtml(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
-function saveProfile(){const name=$('profileName').value.trim()||`Perfil ${state.profiles.length+1}`;state.profiles.push({name,desc:$('profileDesc').value.trim(),scale:clone(state.outScale),ramp:getRampConfig(),savedAt:new Date().toISOString()});saveLocal();renderProfiles();}
+function saveProfile(){const name=$('profileName').value.trim()||`Ensayo ${state.profiles.length+1}`;state.profiles.push({name,desc:$('profileDesc').value.trim(),scale:clone(state.outScale),ramp:getRampConfig(),savedAt:new Date().toISOString()});saveLocal();renderProfiles();}
 function loadProfile(i){const p=state.profiles[i];if(!p)return;state.outScale=clone(p.scale||state.outScale);fillScaleInputs('out',state.outScale);setRampConfig(p.ramp);saveLocal();renderMain();document.querySelector('[data-tab="ramps"]').click();}
 function runProfile(i){loadProfile(i);runRamp();}
 async function uploadProfile(p,num){if(!p)return;const seq=buildRamp(p.ramp);const repeats=Math.max(1,Number(p.ramp?.repeats)||1);await send(`PROFILE:NEW:${num}:${seq.length}:${repeats}`);for(let i=0;i<seq.length;i++){const ma=engToMa(seq[i],p.scale||state.outScale);await send(`PROFILE:POINT:${num}:${i+1}:${(i*p.ramp.tick/1000).toFixed(3)}:${ma.toFixed(3)}`);}await send(`PROFILE:SAVE:${num}`);}
@@ -227,19 +264,19 @@ function bind(){
   bindTabs();$('connectBtn').onclick=connectSerial;$('disconnectBtn').onclick=disconnectSerial;$('startSimulationBtn').onclick=startSimulation;$('transportMode').onchange=()=>{if($('transportMode').value==='serial'){stopSimulation();state.connected=false;$('connectBtn').disabled=false;$('disconnectBtn').disabled=true;$('supportPill').textContent='Web Serial';$('supportPill').className='pill';$('modeStatus').textContent='Web Serial seleccionado. Vinculá el HC-05 en Android y luego presioná Conectar.';setSerialDiag('esperando selección del puerto.');}else{$('modeStatus').textContent='Modo simulación listo para usar sin hardware.';}};
   $('manualSlider').oninput=e=>{const v=clamp(Number(e.target.value),4,20);$('manualCurrent').value=v.toFixed(1);state.outputMa=v;renderMain();};$('manualSlider').onchange=e=>applyOutput(Number(e.target.value));$('manualCurrent').onchange=e=>applyOutput(Math.round(clamp(Number(e.target.value),4,20)*10)/10);$('minusBtn').onclick=()=>applyOutput(Math.round(clamp(state.outputMa-.1,4,20)*10)/10);$('plusBtn').onclick=()=>applyOutput(Math.round(clamp(state.outputMa+.1,4,20)*10)/10);$('applyCurrentBtn').onclick=()=>applyOutput(Math.round(clamp(Number($('manualCurrent').value),4,20)*10)/10);
   $('outputEnabled').onchange=async e=>send(e.target.checked?'SET:OUTPUT:ON':'SET:OUTPUT:OFF');
-  $('resetStatsBtn').onclick=()=>{state.samples=[];renderMain();};$('runRampBtn').onclick=runRamp;$('pauseRampBtn').onclick=()=>{state.rampPaused=!state.rampPaused;$('pauseRampBtn').textContent=state.rampPaused?'▶ Continuar':'Ⅱ Pausar';$('rampStatus').textContent=state.rampPaused?'Rampa pausada.':'Rampa ejecutándose…';};$('stopRampBtn').onclick=stopRamp;
-  $('addPointBtn').onclick=()=>{const last=state.points.at(-1)||{t:0,v:0};state.points.push({t:last.t+10,v:last.v});renderPoints();};$('pointsBody').oninput=e=>{if(e.target.dataset.i!=null)state.points[Number(e.target.dataset.i)][e.target.dataset.k]=Number(e.target.value);};$('pointsBody').onclick=e=>{if(e.target.dataset.del!=null){state.points.splice(Number(e.target.dataset.del),1);renderPoints();}};
+  $('resetStatsBtn').onclick=()=>{state.samples=[];renderMain();};document.querySelectorAll('.ramp-type-btn').forEach(b=>b.onclick=()=>{$('rampType').value=b.dataset.rampType;updateRampEditor();});$('rampType').onchange=updateRampEditor;['rampStart','rampEnd','rampRise','rampHoldHigh','rampFall','rampHoldLow','rampSteps','rampRepeats','rampTick'].forEach(id=>$(id).addEventListener('input',drawRampPreview));$('runRampBtn').onclick=runRamp;$('pauseRampBtn').onclick=()=>{state.rampPaused=!state.rampPaused;$('pauseRampBtn').textContent=state.rampPaused?'▶ Continuar':'Ⅱ Pausar';$('rampStatus').textContent=state.rampPaused?'Rampa pausada.':'Rampa ejecutándose…';};$('stopRampBtn').onclick=stopRamp;
+  $('addPointBtn').onclick=()=>{const last=state.points.at(-1)||{t:0,v:0};state.points.push({t:last.t+10,v:last.v});renderPoints();};$('pointsBody').oninput=e=>{if(e.target.dataset.i!=null){state.points[Number(e.target.dataset.i)][e.target.dataset.k]=Number(e.target.value);drawRampPreview();}};$('pointsBody').onclick=e=>{if(e.target.dataset.del!=null){state.points.splice(Number(e.target.dataset.del),1);renderPoints();}};
   $('saveProfileBtn').onclick=saveProfile;$('exportProfilesBtn').onclick=exportProfiles;$('importProfiles').onchange=async e=>{try{const arr=JSON.parse(await e.target.files[0].text());if(!Array.isArray(arr))throw Error('Formato inválido');state.profiles=arr;saveLocal();renderProfiles();}catch(err){alert('No se pudo importar: '+err.message);}e.target.value='';};
   $('profileList').onclick=e=>{const ds=e.target.dataset;if(ds.load!=null)loadProfile(Number(ds.load));if(ds.run!=null)runProfile(Number(ds.run));if(ds.delete!=null){state.profiles.splice(Number(ds.delete),1);saveLocal();renderProfiles();}if(ds.upload!=null)uploadProfile(state.profiles[Number(ds.upload)],Number($('profileNumber').value)||1);};
   ['out','in'].forEach(p=>{$(p+'SensorType').onchange=()=>setPresetFromType(p);['SensorUnit','SensorMin','SensorMax','CurrentMin','CurrentMax','MeasuredLow','MeasuredHigh'].forEach(s=>$(p+s).oninput=()=>updateCalInfo(p,scaleFromInputs(p)));});$('applyOutScaleBtn').onclick=()=>applyScale('out');$('applyInScaleBtn').onclick=()=>applyScale('in');$('sendOutCalBtn').onclick=()=>sendCalibration('out');$('sendInCalBtn').onclick=()=>sendCalibration('in');
   $('getStatusBtn').onclick=()=>send('GET:STATUS');$('uploadProfileBtn').onclick=()=>uploadProfile({scale:clone(state.outScale),ramp:getRampConfig()},Number($('profileNumber').value)||1);$('runDeviceProfileBtn').onclick=()=>send(`PROFILE:RUN:${Number($('profileNumber').value)||1}`);$('terminalSendBtn').onclick=()=>{const v=$('terminalInput').value.trim();if(v){send(v);$('terminalInput').value='';}};$('clearTerminalBtn').onclick=()=>{$('terminal').textContent='';};$('exportCsvBtn').onclick=exportCsv;
-  $('themeBtn').onclick=()=>{document.documentElement.classList.toggle('light');localStorage.setItem('simcorr_theme',document.documentElement.classList.contains('light')?'light':'dark');};
+  $('themeBtn').onclick=()=>{const root=document.documentElement;const next=root.dataset.theme==='dark'?'light':'dark';if(next==='dark')root.dataset.theme='dark';else delete root.dataset.theme;localStorage.setItem('simcorr_theme',next);drawRampPreview();drawRampChart();};
   $('installBtn').onclick=async()=>{if(state.installPrompt){state.installPrompt.prompt();await state.installPrompt.userChoice;state.installPrompt=null;$('installBtn').hidden=true;}};
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();state.installPrompt=e;$('installBtn').hidden=false;});
 }
 function init(){
-  if(localStorage.getItem('simcorr_theme')==='light')document.documentElement.classList.add('light');
-  loadLocal();populateTypeSelect('outSensorType');populateTypeSelect('inSensorType');fillScaleInputs('out',state.outScale);fillScaleInputs('in',state.inScale);renderPoints();renderProfiles();bind();renderMain();
+  if(localStorage.getItem('simcorr_theme')==='dark')document.documentElement.dataset.theme='dark';
+  loadLocal();populateTypeSelect('outSensorType');populateTypeSelect('inSensorType');fillScaleInputs('out',state.outScale);fillScaleInputs('in',state.inScale);renderPoints();renderProfiles();bind();updateRampEditor();renderMain();
   $('transportMode').value='serial';
   $('connectBtn').disabled=false;$('disconnectBtn').disabled=true;
   $('supportPill').textContent=('serial'in navigator)?'Web Serial disponible':'Web Serial no disponible';

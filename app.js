@@ -17,15 +17,16 @@ const state={
   outScale:makeScale('current'), inScale:makeScale('current'), outputMa:12, inputMa:null, outputOpen:false,
   port:null,reader:null,writer:null,connected:false,simulation:false,simTimer:null,simPhase:0,
   samples:[],chart:[],profiles:[],points:[{t:0,v:0},{t:10,v:100}], rampTimer:null,rampPaused:false,rampState:null,
-  installPrompt:null,rampTrace:[]
+  installPrompt:null,rampTrace:[],
+  deviceProfiles:Array(16).fill(null),deviceSlotNames:{},awaitingProfileList:false,pendingUploadIndex:null
 };
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function engToMa(v,s){const lo=Math.min(s.min,s.max),hi=Math.max(s.min,s.max),cv=clamp(Number(v),lo,hi);const span=s.max-s.min||1;const ma=s.currentMin+(cv-s.min)*(s.currentMax-s.currentMin)/span;return clamp(ma,4,20);}
 function maToEng(ma,s){const span=s.currentMax-s.currentMin||1;return s.min+(clamp(Number(ma),4,20)-s.currentMin)*(s.max-s.min)/span;}
 function fmt(v,n=1){return Number.isFinite(Number(v))?Number(v).toFixed(n):'—';}
 function log(msg,dir='•'){const t=$('terminal');t.textContent+=`${new Date().toLocaleTimeString()} ${dir} ${msg}\n`;t.scrollTop=t.scrollHeight;}
-function saveLocal(){localStorage.setItem('simcorr_profiles_v12',JSON.stringify(state.profiles));localStorage.setItem('simcorr_outscale_v12',JSON.stringify(state.outScale));localStorage.setItem('simcorr_inscale_v12',JSON.stringify(state.inScale));}
-function loadLocal(){try{state.profiles=JSON.parse(localStorage.getItem('simcorr_profiles_v12')||'[]');state.outScale={...makeScale(),...JSON.parse(localStorage.getItem('simcorr_outscale_v12')||'{}')};state.inScale={...makeScale(),...JSON.parse(localStorage.getItem('simcorr_inscale_v12')||'{}')};}catch(e){console.warn(e);}}
+function saveLocal(){localStorage.setItem('simcorr_profiles_v12',JSON.stringify(state.profiles));localStorage.setItem('simcorr_outscale_v12',JSON.stringify(state.outScale));localStorage.setItem('simcorr_inscale_v12',JSON.stringify(state.inScale));localStorage.setItem('simcorr_device_slot_names_v14',JSON.stringify(state.deviceSlotNames));}
+function loadLocal(){try{state.profiles=JSON.parse(localStorage.getItem('simcorr_profiles_v12')||'[]');state.outScale={...makeScale(),...JSON.parse(localStorage.getItem('simcorr_outscale_v12')||'{}')};state.inScale={...makeScale(),...JSON.parse(localStorage.getItem('simcorr_inscale_v12')||'{}')};state.deviceSlotNames=JSON.parse(localStorage.getItem('simcorr_device_slot_names_v14')||'{}');}catch(e){console.warn(e);}}
 function setPill(text,ok=false){$('livePill').textContent=text;$('livePill').className='pill '+(ok?'ok':'muted');}
 function updateSummary(){$('scaleSummary').innerHTML=`<b>Salida:</b> ${state.outScale.name}: ${fmt(state.outScale.min,2)} a ${fmt(state.outScale.max,2)} ${state.outScale.unit} ↔ ${fmt(state.outScale.currentMin,1)}–${fmt(state.outScale.currentMax,1)} mA<br><b>Entrada:</b> ${state.inScale.name}: ${fmt(state.inScale.min,2)} a ${fmt(state.inScale.max,2)} ${state.inScale.unit} ↔ ${fmt(state.inScale.currentMin,1)}–${fmt(state.inScale.currentMax,1)} mA`;}
 function renderMain(){
@@ -38,7 +39,7 @@ function renderMain(){
 }
 async function send(line){
   log(line,'TX');
-  if(state.simulation){handleLine(simulateCommand(line));return true;}
+  if(state.simulation){const response=simulateCommand(line);(Array.isArray(response)?response:[response]).forEach(handleLine);return true;}
   if(!state.writer){log('Puerto no conectado','ERR');return false;}
   try{await state.writer.write(new TextEncoder().encode(line+'\n'));return true;}catch(e){log(e.message,'ERR');return false;}
 }
@@ -47,11 +48,40 @@ function simulateCommand(line){
   if(line.startsWith('SET:CURRENT:')){const v=Number(line.split(':')[2]);if(Number.isFinite(v))state.outputMa=clamp(v,4,20);return 'OK';}
   if(line.startsWith('SET:OUTPUT:OPEN')){state.outputOpen=true;return 'OK';}
   if(line.startsWith('SET:OUTPUT:ON')){state.outputOpen=false;return 'OK';}
+  if(line==='PROFILE:LIST'){
+    const lines=[];
+    state.deviceProfiles.forEach((p,i)=>{if(p)lines.push(`PROFILE:${i+1}:COUNT=${p.count}:REP=${p.repeats}`);});
+    lines.push('OK');
+    return lines;
+  }
+  if(line.startsWith('PROFILE:DELETE:')){const slot=Number(line.split(':')[2]);if(slot>=1&&slot<=16)state.deviceProfiles[slot-1]=null;return 'OK';}
+  if(line.startsWith('PROFILE:RUN:'))return 'OK';
   if(line.startsWith('PROFILE:'))return 'OK';
   if(line.startsWith('CAL:'))return 'OK';
   return 'OK';
 }
-function handleLine(line){if(!line)return;log(line,'RX');if(line.startsWith('DATA:')){const mo=line.match(/OUT=([-\d.]+)/),mi=line.match(/IN=([-\d.]+)/);if(mo)state.outputMa=Number(mo[1]);if(mi)addInput(Number(mi[1]));renderMain();}}
+function handleLine(line){
+  if(!line)return;
+  log(line,'RX');
+  if(line.startsWith('DATA:')){
+    const mo=line.match(/OUT=([-\d.]+)/),mi=line.match(/IN=([-\d.]+)/);
+    if(mo)state.outputMa=Number(mo[1]);
+    if(mi)addInput(Number(mi[1]));
+    renderMain();
+    return;
+  }
+  const pm=line.match(/^PROFILE:(\d+):COUNT=(\d+):REP=(\d+)/);
+  if(pm){
+    const slot=Number(pm[1]);
+    if(slot>=1&&slot<=16)state.deviceProfiles[slot-1]={slot,count:Number(pm[2]),repeats:Number(pm[3])};
+    renderDeviceProfiles();
+    return;
+  }
+  if(line==='OK'&&state.awaitingProfileList){
+    state.awaitingProfileList=false;
+    renderDeviceProfiles();
+  }
+}
 function setSerialDiag(msg){const el=$('serialDiag');if(el)el.textContent='Diagnóstico: '+msg;}
 async function connectSerial(){
   if($('transportMode').value==='simulation'){startSimulation();return;}
@@ -218,7 +248,7 @@ function drawRampChart(){
   const data=state.rampTrace;if(data.length<2)return;
   const xs=i=>48+(w-70)*i/(data.length-1),ys=v=>24+(h-48)*(20-clamp(Number(v),4,20))/16;
   const line=(key,color)=>{ctx.strokeStyle=color;ctx.lineWidth=4;ctx.beginPath();let started=false;data.forEach((p,i)=>{if(p[key]==null)return;const x=xs(i),y=ys(p[key]);if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);});ctx.stroke();};
-  line('out','#38bdf8');line('inp','#22c55e');
+  line('out',getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#c9252d');line('inp',getComputedStyle(document.documentElement).getPropertyValue('--success').trim()||'#198754');
 }
 
 function getRampConfig(){return{type:$('rampType').value,repeats:Number($('rampRepeats').value)||1,start:Number($('rampStart').value),end:Number($('rampEnd').value),rise:Number($('rampRise').value)||1,holdHigh:Number($('rampHoldHigh').value)||0,fall:Number($('rampFall').value)||1,holdLow:Number($('rampHoldLow').value)||0,steps:Number($('rampSteps').value)||8,tick:Number($('rampTick').value)||500,points:clone(state.points)};}
@@ -249,17 +279,129 @@ function runRamp(){
   },Math.max(100,r.tick));
 }
 function renderPoints(){$('pointsBody').innerHTML='';state.points.forEach((p,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td><input data-i="${i}" data-k="t" type="number" step="0.1" value="${p.t}"></td><td><input data-i="${i}" data-k="v" type="number" step="0.1" value="${p.v}"></td><td><button class="btn small" data-del="${i}">×</button></td>`;$('pointsBody').appendChild(tr);});drawRampPreview();}
-function renderProfiles(){const box=$('profileList');box.innerHTML='';if(!state.profiles.length){box.innerHTML='<p class="hint">Todavía no hay ensayos guardados. Creá una rampa y guardala para reutilizarla o cargarla en el equipo.</p>';return;}state.profiles.forEach((p,i)=>{const d=document.createElement('div');d.className='profile-item';d.innerHTML=`<h3>${escapeHtml(p.name||'Ensayo')}</h3><p>${escapeHtml(p.desc||'')} · ${escapeHtml(p.scale?.name||'')} ${p.scale?`${p.scale.min}–${p.scale.max} ${p.scale.unit}`:''}</p><div class="profile-actions"><button class="btn small" data-load="${i}">Cargar</button><button class="btn small primary" data-run="${i}">Ejecutar</button><button class="btn small" data-upload="${i}">Subir equipo</button><button class="btn small danger" data-delete="${i}">Eliminar</button></div>`;box.appendChild(d);});}
+function renderProfiles(){
+  const box=$('profileList');box.innerHTML='';
+  if(!state.profiles.length){
+    box.innerHTML='<p class="hint">Todavía no hay ensayos guardados. Creá una rampa y guardala para reutilizarla o cargarla en el equipo.</p>';
+    return;
+  }
+  state.profiles.forEach((p,i)=>{
+    const d=document.createElement('div');d.className='profile-item';
+    const rampLabel=(RAMP_META[p.ramp?.type]||{}).label||'Prueba';
+    const reps=Math.max(1,Number(p.ramp?.repeats)||1);
+    d.innerHTML=`<div class="profile-title-row"><div><h3>${escapeHtml(p.name||'Ensayo')}</h3><p>${escapeHtml(p.desc||'Sin descripción')}</p></div><span class="pill">${escapeHtml(rampLabel)}</span></div><div class="profile-meta"><span>${escapeHtml(p.scale?.name||'Variable')}</span><span>${p.scale?`${p.scale.min}–${p.scale.max} ${escapeHtml(p.scale.unit)}`:''}</span><span>${reps} rep.</span></div><div class="profile-actions"><button class="btn small" data-load="${i}">Editar</button><button class="btn small" data-run="${i}">Probar</button><button class="btn small primary" data-upload="${i}">Guardar en equipo</button><button class="btn small danger" data-delete="${i}">Eliminar</button></div>`;
+    box.appendChild(d);
+  });
+}
 function escapeHtml(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
-function saveProfile(){const name=$('profileName').value.trim()||`Ensayo ${state.profiles.length+1}`;state.profiles.push({name,desc:$('profileDesc').value.trim(),scale:clone(state.outScale),ramp:getRampConfig(),savedAt:new Date().toISOString()});saveLocal();renderProfiles();}
+function saveProfile(){
+  const name=$('profileName').value.trim()||`Ensayo ${state.profiles.length+1}`;
+  state.profiles.push({name,desc:$('profileDesc').value.trim(),scale:clone(state.outScale),ramp:getRampConfig(),savedAt:new Date().toISOString()});
+  saveLocal();renderProfiles();
+  $('profileName').value='';$('profileDesc').value='';
+}
 function loadProfile(i){const p=state.profiles[i];if(!p)return;state.outScale=clone(p.scale||state.outScale);fillScaleInputs('out',state.outScale);setRampConfig(p.ramp);saveLocal();renderMain();document.querySelector('[data-tab="ramps"]').click();}
 function runProfile(i){loadProfile(i);runRamp();}
-async function uploadProfile(p,num){if(!p)return;const seq=buildRamp(p.ramp);const repeats=Math.max(1,Number(p.ramp?.repeats)||1);await send(`PROFILE:NEW:${num}:${seq.length}:${repeats}`);for(let i=0;i<seq.length;i++){const ma=engToMa(seq[i],p.scale||state.outScale);await send(`PROFILE:POINT:${num}:${i+1}:${(i*p.ramp.tick/1000).toFixed(3)}:${ma.toFixed(3)}`);}await send(`PROFILE:SAVE:${num}`);}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function renderDeviceProfiles(){
+  const box=$('deviceProfileList');if(!box)return;
+  box.innerHTML='';
+  for(let slot=1;slot<=16;slot++){
+    const p=state.deviceProfiles[slot-1];
+    const name=state.deviceSlotNames[slot]||(p?'Ensayo almacenado':'Vacío');
+    const d=document.createElement('div');
+    d.className='device-slot '+(p?'occupied':'empty');
+    d.innerHTML=`<div class="slot-number">SLOT <b>${slot}</b></div><div class="slot-info"><strong>${escapeHtml(name)}</strong><small>${p?`${p.count} puntos · ${p.repeats} rep.`:'Disponible para guardar un ensayo'}</small></div><div class="slot-actions">${p?`<button class="btn small primary" data-device-run="${slot}">▶ Ejecutar</button><button class="btn small danger" data-device-delete="${slot}">Borrar</button>`:'<span class="slot-empty-badge">Vacío</span>'}</div>`;
+    box.appendChild(d);
+  }
+  const occupied=state.deviceProfiles.filter(Boolean).length;
+  $('deviceMemoryStatus').innerHTML=`<b>${occupied}/16 slots ocupados</b><br>${state.connected||state.simulation?'Memoria sincronizada con la última lectura.':'Conectá el instrumento para actualizar el contenido real.'}`;
+}
+async function requestDeviceProfiles(){
+  if(!state.connected&&!state.simulation){$('deviceMemoryStatus').innerHTML='<b>Instrumento desconectado.</b><br>Conectá el HC-05 antes de leer la memoria.';return;}
+  state.deviceProfiles=Array(16).fill(null);
+  state.awaitingProfileList=true;
+  $('deviceMemoryStatus').textContent='Leyendo memoria del instrumento...';
+  renderDeviceProfiles();
+  await send('PROFILE:LIST');
+}
+function updateDeviceSlotWarning(){
+  const slot=Number($('deviceSlotSelect').value);
+  const occupied=state.deviceProfiles[slot-1];
+  const el=$('deviceSlotWarning');
+  if(occupied){
+    const name=state.deviceSlotNames[slot]||'Ensayo almacenado';
+    el.className='slot-warning danger';
+    el.innerHTML=`El slot ${slot} está ocupado por <b>${escapeHtml(name)}</b>. Si continuás, será reemplazado.`;
+  }else{
+    el.className='slot-warning ok';
+    el.textContent=`El slot ${slot} está disponible.`;
+  }
+}
+function openDeviceSaveDialog(index){
+  const p=state.profiles[index];if(!p)return;
+  state.pendingUploadIndex=index;
+  $('deviceSaveSummary').innerHTML=`<b>${escapeHtml(p.name||'Ensayo')}</b><br>${escapeHtml(p.scale?.name||'Variable')}: ${p.scale?`${p.scale.min}–${p.scale.max} ${escapeHtml(p.scale.unit)}`:''} · ${Math.max(1,Number(p.ramp?.repeats)||1)} repeticiones`;
+  const select=$('deviceSlotSelect');
+  select.innerHTML='';
+  for(let slot=1;slot<=16;slot++){
+    const op=document.createElement('option');op.value=slot;
+    const occupied=state.deviceProfiles[slot-1];
+    op.textContent=`Slot ${slot} — ${occupied?(state.deviceSlotNames[slot]||'ocupado'):'vacío'}`;
+    select.appendChild(op);
+  }
+  const firstEmpty=state.deviceProfiles.findIndex(x=>!x);
+  select.value=String(firstEmpty>=0?firstEmpty+1:1);
+  $('deviceUploadProgress').hidden=true;
+  updateDeviceSlotWarning();
+  $('deviceSaveDialog').showModal();
+}
+async function uploadProfile(p,num){
+  if(!p||num<1||num>16)return false;
+  if(!state.connected&&!state.simulation){alert('Primero conectá el HC-05 con el instrumento.');return false;}
+  const seq=buildRamp(p.ramp);
+  if(!seq.length){alert('El ensayo no contiene puntos para guardar.');return false;}
+  if(seq.length>988){alert('El ensayo supera la capacidad máxima de 988 puntos por slot. Aumentá el intervalo de actualización o reducí la duración.');return false;}
+  const repeats=Math.max(1,Number(p.ramp?.repeats)||1);
+  const progress=$('deviceUploadProgress'),fill=$('deviceUploadFill'),label=$('deviceUploadText');
+  if(progress){progress.hidden=false;fill.style.width='0%';label.textContent='Preparando memoria...';}
+  if(!(await send(`PROFILE:NEW:${num}:${seq.length}:${repeats}`)))return false;
+  await sleep(40);
+  for(let i=0;i<seq.length;i++){
+    const ma=engToMa(seq[i],p.scale||state.outScale);
+    if(!(await send(`PROFILE:POINT:${num}:${i+1}:${(i*p.ramp.tick/1000).toFixed(3)}:${ma.toFixed(3)}`)))return false;
+    if(progress){const pc=Math.round((i+1)*100/seq.length);fill.style.width=pc+'%';label.textContent=`Guardando punto ${i+1} de ${seq.length} · ${pc}%`;}
+    await sleep(35);
+  }
+  if(!(await send(`PROFILE:SAVE:${num}`)))return false;
+  state.deviceProfiles[num-1]={slot:num,count:seq.length,repeats};
+  state.deviceSlotNames[num]=p.name||`Ensayo slot ${num}`;
+  saveLocal();renderDeviceProfiles();
+  if(progress){fill.style.width='100%';label.textContent='Ensayo guardado en el instrumento.';}
+  return true;
+}
+async function confirmDeviceSave(){
+  const p=state.profiles[state.pendingUploadIndex];
+  const slot=Number($('deviceSlotSelect').value);
+  if(!p||slot<1||slot>16)return;
+  $('confirmDeviceSaveBtn').disabled=true;
+  const ok=await uploadProfile(p,slot);
+  $('confirmDeviceSaveBtn').disabled=false;
+  if(ok){setTimeout(()=>$('deviceSaveDialog').close(),500);}
+}
+async function deleteDeviceProfile(slot){
+  if(slot<1||slot>16)return;
+  if(!confirm(`¿Borrar el ensayo almacenado en el slot ${slot}?`))return;
+  await send(`PROFILE:DELETE:${slot}`);
+  state.deviceProfiles[slot-1]=null;
+  delete state.deviceSlotNames[slot];
+  saveLocal();renderDeviceProfiles();
+}
 function download(name,text,type='text/plain'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
 function exportProfiles(){download('Simulink-perfiles.json',JSON.stringify(state.profiles,null,2),'application/json');}
 function exportCsv(){const rows=['timestamp,salida_mA,entrada_mA,salida_valor,salida_unidad,entrada_valor,entrada_unidad'];state.chart.forEach(p=>rows.push(`${new Date(p.t).toISOString()},${p.out.toFixed(3)},${p.inp.toFixed(3)},${maToEng(p.out,state.outScale).toFixed(3)},${state.outScale.unit},${maToEng(p.inp,state.inScale).toFixed(3)},${state.inScale.unit}`));download('Simulink-datos.csv',rows.join('\n'),'text/csv');}
-function drawChart(){const c=$('chart');if(!c)return;const ctx=c.getContext('2d'),w=c.width,h=c.height;ctx.clearRect(0,0,w,h);ctx.strokeStyle='#64748b';ctx.lineWidth=1;ctx.beginPath();for(let i=0;i<=4;i++){const y=20+(h-40)*i/4;ctx.moveTo(50,y);ctx.lineTo(w-20,y);}ctx.stroke();const data=state.chart;if(data.length<2)return;const xs=(i)=>50+(w-70)*i/(data.length-1);const ys=(v)=>20+(h-40)*(22-v)/20;const line=(key,color)=>{ctx.strokeStyle=color;ctx.lineWidth=3;ctx.beginPath();data.forEach((p,i)=>{const x=xs(i),y=ys(p[key]);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();};line('out','#38bdf8');line('inp','#22c55e');}
-function bindTabs(){document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));b.classList.add('active');$('tab-'+b.dataset.tab).classList.add('active');if(b.dataset.tab==='profiles')renderProfiles();if(b.dataset.tab==='ramps')drawRampChart();}));}
+function drawChart(){const c=$('chart');if(!c)return;const ctx=c.getContext('2d'),w=c.width,h=c.height,cs=getComputedStyle(document.documentElement),brand=cs.getPropertyValue('--brand').trim()||'#c9252d',success=cs.getPropertyValue('--success').trim()||'#198754';ctx.clearRect(0,0,w,h);ctx.strokeStyle=cs.getPropertyValue('--border').trim()||'#dfe2e7';ctx.lineWidth=1;ctx.beginPath();for(let i=0;i<=4;i++){const y=20+(h-40)*i/4;ctx.moveTo(50,y);ctx.lineTo(w-20,y);}ctx.stroke();const data=state.chart;if(data.length<2)return;const xs=(i)=>50+(w-70)*i/(data.length-1);const ys=(v)=>20+(h-40)*(22-v)/20;const line=(key,color)=>{ctx.strokeStyle=color;ctx.lineWidth=3;ctx.beginPath();data.forEach((p,i)=>{const x=xs(i),y=ys(p[key]);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();};line('out',brand);line('inp',success);}
+function bindTabs(){document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));b.classList.add('active');$('tab-'+b.dataset.tab).classList.add('active');if(b.dataset.tab==='profiles'){renderProfiles();renderDeviceProfiles();}if(b.dataset.tab==='ramps')drawRampChart();}));}
 function bind(){
   bindTabs();$('connectBtn').onclick=connectSerial;$('disconnectBtn').onclick=disconnectSerial;$('startSimulationBtn').onclick=startSimulation;$('transportMode').onchange=()=>{if($('transportMode').value==='serial'){stopSimulation();state.connected=false;$('connectBtn').disabled=false;$('disconnectBtn').disabled=true;$('supportPill').textContent='Web Serial';$('supportPill').className='pill';$('modeStatus').textContent='Web Serial seleccionado. Vinculá el HC-05 en Android y luego presioná Conectar.';setSerialDiag('esperando selección del puerto.');}else{$('modeStatus').textContent='Modo simulación listo para usar sin hardware.';}};
   $('manualSlider').oninput=e=>{const v=clamp(Number(e.target.value),4,20);$('manualCurrent').value=v.toFixed(1);state.outputMa=v;renderMain();};$('manualSlider').onchange=e=>applyOutput(Number(e.target.value));$('manualCurrent').onchange=e=>applyOutput(Math.round(clamp(Number(e.target.value),4,20)*10)/10);$('minusBtn').onclick=()=>applyOutput(Math.round(clamp(state.outputMa-.1,4,20)*10)/10);$('plusBtn').onclick=()=>applyOutput(Math.round(clamp(state.outputMa+.1,4,20)*10)/10);$('applyCurrentBtn').onclick=()=>applyOutput(Math.round(clamp(Number($('manualCurrent').value),4,20)*10)/10);
@@ -267,16 +409,21 @@ function bind(){
   $('resetStatsBtn').onclick=()=>{state.samples=[];renderMain();};document.querySelectorAll('.ramp-type-btn').forEach(b=>b.onclick=()=>{$('rampType').value=b.dataset.rampType;updateRampEditor();});$('rampType').onchange=updateRampEditor;['rampStart','rampEnd','rampRise','rampHoldHigh','rampFall','rampHoldLow','rampSteps','rampRepeats','rampTick'].forEach(id=>$(id).addEventListener('input',drawRampPreview));$('runRampBtn').onclick=runRamp;$('pauseRampBtn').onclick=()=>{state.rampPaused=!state.rampPaused;$('pauseRampBtn').textContent=state.rampPaused?'▶ Continuar':'Ⅱ Pausar';$('rampStatus').textContent=state.rampPaused?'Rampa pausada.':'Rampa ejecutándose…';};$('stopRampBtn').onclick=stopRamp;
   $('addPointBtn').onclick=()=>{const last=state.points.at(-1)||{t:0,v:0};state.points.push({t:last.t+10,v:last.v});renderPoints();};$('pointsBody').oninput=e=>{if(e.target.dataset.i!=null){state.points[Number(e.target.dataset.i)][e.target.dataset.k]=Number(e.target.value);drawRampPreview();}};$('pointsBody').onclick=e=>{if(e.target.dataset.del!=null){state.points.splice(Number(e.target.dataset.del),1);renderPoints();}};
   $('saveProfileBtn').onclick=saveProfile;$('exportProfilesBtn').onclick=exportProfiles;$('importProfiles').onchange=async e=>{try{const arr=JSON.parse(await e.target.files[0].text());if(!Array.isArray(arr))throw Error('Formato inválido');state.profiles=arr;saveLocal();renderProfiles();}catch(err){alert('No se pudo importar: '+err.message);}e.target.value='';};
-  $('profileList').onclick=e=>{const ds=e.target.dataset;if(ds.load!=null)loadProfile(Number(ds.load));if(ds.run!=null)runProfile(Number(ds.run));if(ds.delete!=null){state.profiles.splice(Number(ds.delete),1);saveLocal();renderProfiles();}if(ds.upload!=null)uploadProfile(state.profiles[Number(ds.upload)],Number($('profileNumber').value)||1);};
+  $('profileList').onclick=e=>{const ds=e.target.dataset;if(ds.load!=null)loadProfile(Number(ds.load));if(ds.run!=null)runProfile(Number(ds.run));if(ds.delete!=null){state.profiles.splice(Number(ds.delete),1);saveLocal();renderProfiles();}if(ds.upload!=null)openDeviceSaveDialog(Number(ds.upload));};
+  $('refreshDeviceProfilesBtn').onclick=requestDeviceProfiles;
+  $('deviceProfileList').onclick=e=>{const ds=e.target.dataset;if(ds.deviceRun!=null)send(`PROFILE:RUN:${Number(ds.deviceRun)}`);if(ds.deviceDelete!=null)deleteDeviceProfile(Number(ds.deviceDelete));};
+  $('deviceSlotSelect').onchange=updateDeviceSlotWarning;
+  $('confirmDeviceSaveBtn').onclick=confirmDeviceSave;
+  $('closeDeviceSaveDialog').onclick=()=>$('deviceSaveDialog').close();
   ['out','in'].forEach(p=>{$(p+'SensorType').onchange=()=>setPresetFromType(p);['SensorUnit','SensorMin','SensorMax','CurrentMin','CurrentMax','MeasuredLow','MeasuredHigh'].forEach(s=>$(p+s).oninput=()=>updateCalInfo(p,scaleFromInputs(p)));});$('applyOutScaleBtn').onclick=()=>applyScale('out');$('applyInScaleBtn').onclick=()=>applyScale('in');$('sendOutCalBtn').onclick=()=>sendCalibration('out');$('sendInCalBtn').onclick=()=>sendCalibration('in');
-  $('getStatusBtn').onclick=()=>send('GET:STATUS');$('uploadProfileBtn').onclick=()=>uploadProfile({scale:clone(state.outScale),ramp:getRampConfig()},Number($('profileNumber').value)||1);$('runDeviceProfileBtn').onclick=()=>send(`PROFILE:RUN:${Number($('profileNumber').value)||1}`);$('terminalSendBtn').onclick=()=>{const v=$('terminalInput').value.trim();if(v){send(v);$('terminalInput').value='';}};$('clearTerminalBtn').onclick=()=>{$('terminal').textContent='';};$('exportCsvBtn').onclick=exportCsv;
+  $('terminalSendBtn').onclick=()=>{const v=$('terminalInput').value.trim();if(v){send(v);$('terminalInput').value='';}};$('clearTerminalBtn').onclick=()=>{$('terminal').textContent='';};$('exportCsvBtn').onclick=exportCsv;
   $('themeBtn').onclick=()=>{const root=document.documentElement;const next=root.dataset.theme==='dark'?'light':'dark';if(next==='dark')root.dataset.theme='dark';else delete root.dataset.theme;localStorage.setItem('simcorr_theme',next);drawRampPreview();drawRampChart();};
   $('installBtn').onclick=async()=>{if(state.installPrompt){state.installPrompt.prompt();await state.installPrompt.userChoice;state.installPrompt=null;$('installBtn').hidden=true;}};
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();state.installPrompt=e;$('installBtn').hidden=false;});
 }
 function init(){
   if(localStorage.getItem('simcorr_theme')==='dark')document.documentElement.dataset.theme='dark';
-  loadLocal();populateTypeSelect('outSensorType');populateTypeSelect('inSensorType');fillScaleInputs('out',state.outScale);fillScaleInputs('in',state.inScale);renderPoints();renderProfiles();bind();updateRampEditor();renderMain();
+  loadLocal();populateTypeSelect('outSensorType');populateTypeSelect('inSensorType');fillScaleInputs('out',state.outScale);fillScaleInputs('in',state.inScale);renderPoints();renderProfiles();renderDeviceProfiles();bind();updateRampEditor();renderMain();
   $('transportMode').value='serial';
   $('connectBtn').disabled=false;$('disconnectBtn').disabled=true;
   $('supportPill').textContent=('serial'in navigator)?'Web Serial disponible':'Web Serial no disponible';

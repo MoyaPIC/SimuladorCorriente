@@ -138,7 +138,7 @@ static const uint8_t EEPROM_ADDR  = 0x50;
 // ============================================================================
 // USB_BAUD se usa solo para monitor serie/diagnóstico.
 // BT_BAUD debe coincidir con la velocidad configurada en el HC-05.
-static const char FIRMWARE_VERSION[] = "1.0.2";
+static const char FIRMWARE_VERSION[] = "1.0.3";
 static const uint32_t USB_BAUD = 115200UL;
 static const uint32_t BT_BAUD  = 9600UL;
 

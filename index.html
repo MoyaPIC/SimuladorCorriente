@@ -7,14 +7,14 @@
   <meta name="description" content="Simulink - simulación y medición 4-20 mA mediante Web Serial y HC-05">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.3.3">
+  <link rel="stylesheet" href="styles.css?v=1.4.0">
   <title>Simulink · 4–20 mA</title>
 </head>
 <body>
 <header class="topbar">
   <div>
-    <div class="eyebrow">MoyaPIC · Instrumentación</div>
-    <h1>Simulink <small style="font-size:11px;opacity:.65">v1.3.3</small></h1>
+    <div class="eyebrow">UconnectME · Instrumentación</div>
+    <h1>Simulink <small style="font-size:11px;opacity:.65">v1.4.0</small></h1>
   </div>
   <div class="top-actions">
     <span id="supportPill" class="pill">Web Serial</span>
@@ -78,31 +78,119 @@
   </section>
 
   <section id="tab-ramps" class="panel">
-    <article class="card">
-      <div class="card-head"><div><span class="label">RAMPAS</span><h2>Configuración</h2></div></div>
-      <div class="form-grid">
-        <label>Tipo<select id="rampType"><option value="linear">Lineal</option><option value="triangle">Triangular</option><option value="steps">Escalonada</option><option value="cycle">Ciclo</option><option value="custom">Multipunto</option></select></label>
-        <label>Repeticiones<input id="rampRepeats" type="number" min="1" max="999" value="1"></label>
-        <label>Valor inicial<input id="rampStart" type="number" step="0.1" value="0"></label>
-        <label>Valor final<input id="rampEnd" type="number" step="0.1" value="100"></label>
-        <label>Subida (s)<input id="rampRise" type="number" min="0.1" step="0.1" value="10"></label>
-        <label>Mantener arriba (s)<input id="rampHoldHigh" type="number" min="0" step="0.1" value="2"></label>
-        <label>Bajada (s)<input id="rampFall" type="number" min="0.1" step="0.1" value="10"></label>
-        <label>Mantener abajo (s)<input id="rampHoldLow" type="number" min="0" step="0.1" value="2"></label>
-        <label>Pasos<input id="rampSteps" type="number" min="2" max="100" value="8"></label>
-        <label>Actualización (ms)<input id="rampTick" type="number" min="100" max="5000" step="100" value="500"></label>
+    <article class="card ramp-builder-card">
+      <div class="card-head">
+        <div><span class="label">RAMPAS</span><h2>Crear una prueba</h2></div>
+        <span id="rampTypeBadge" class="pill">Lineal</span>
       </div>
-      <div class="button-grid three">
-        <button id="runRampBtn" class="btn primary">▶ Ejecutar</button>
-        <button id="pauseRampBtn" class="btn">Ⅱ Pausar</button>
-        <button id="stopRampBtn" class="btn danger">■ Detener</button>
+
+      <div class="config-step">
+        <div class="step-heading">
+          <span class="step-number">1</span>
+          <div><b>Elegí el comportamiento</b><small>Seleccioná cómo querés que cambie la variable.</small></div>
+        </div>
+
+        <div class="ramp-type-grid">
+          <button class="ramp-type-btn active" type="button" data-ramp-type="linear"><b>↗ Lineal</b><small>De un valor a otro</small></button>
+          <button class="ramp-type-btn" type="button" data-ramp-type="triangle"><b>△ Triangular</b><small>Sube y vuelve</small></button>
+          <button class="ramp-type-btn" type="button" data-ramp-type="steps"><b>▥ Escalonada</b><small>Avanza por pasos</small></button>
+          <button class="ramp-type-btn" type="button" data-ramp-type="cycle"><b>↻ Ciclo</b><small>Sube, espera y baja</small></button>
+          <button class="ramp-type-btn wide-choice" type="button" data-ramp-type="custom"><b>⌁ Multipunto</b><small>Definí cada punto</small></button>
+        </div>
+
+        <select id="rampType" class="hidden-select" aria-label="Tipo de rampa">
+          <option value="linear">Lineal</option>
+          <option value="triangle">Triangular</option>
+          <option value="steps">Escalonada</option>
+          <option value="cycle">Ciclo</option>
+          <option value="custom">Multipunto</option>
+        </select>
+        <p id="rampGuideText" class="hint ramp-guide">La salida avanzará de forma continua desde el valor inicial al final.</p>
       </div>
-      <p id="rampStatus" class="hint">La rampa usa la escala activa y nunca ordena fuera de 4.0–20.0 mA.</p>
+
+      <div class="config-step">
+        <div class="step-heading">
+          <span class="step-number">2</span>
+          <div><b>Definí valores y tiempos</b><small>Solo aparecen los parámetros necesarios para este tipo de prueba.</small></div>
+        </div>
+
+        <div class="ramp-field-grid">
+          <label class="field-card" data-ramp-field="start">
+            <span>Valor inicial</span>
+            <div class="field-with-unit"><input id="rampStart" type="number" step="0.1" value="0"><small id="rampStartUnit"></small></div>
+          </label>
+          <label class="field-card" data-ramp-field="end">
+            <span>Valor final</span>
+            <div class="field-with-unit"><input id="rampEnd" type="number" step="0.1" value="100"><small id="rampEndUnit"></small></div>
+          </label>
+          <label class="field-card" data-ramp-field="rise">
+            <span id="rampRiseLabel">Tiempo de subida</span>
+            <div class="field-with-unit"><input id="rampRise" type="number" min="0.1" step="0.1" value="10"><small>s</small></div>
+          </label>
+          <label class="field-card" data-ramp-field="fall">
+            <span>Tiempo de bajada</span>
+            <div class="field-with-unit"><input id="rampFall" type="number" min="0.1" step="0.1" value="10"><small>s</small></div>
+          </label>
+          <label class="field-card" data-ramp-field="holdHigh">
+            <span>Mantener arriba</span>
+            <div class="field-with-unit"><input id="rampHoldHigh" type="number" min="0" step="0.1" value="2"><small>s</small></div>
+          </label>
+          <label class="field-card" data-ramp-field="holdLow">
+            <span>Mantener abajo</span>
+            <div class="field-with-unit"><input id="rampHoldLow" type="number" min="0" step="0.1" value="2"><small>s</small></div>
+          </label>
+          <label class="field-card" data-ramp-field="steps">
+            <span>Cantidad de pasos</span>
+            <div class="field-with-unit"><input id="rampSteps" type="number" min="2" max="100" value="8"><small>pasos</small></div>
+          </label>
+          <label class="field-card" data-ramp-field="repeats">
+            <span>Repeticiones</span>
+            <div class="field-with-unit"><input id="rampRepeats" type="number" min="1" max="999" value="1"><small>veces</small></div>
+          </label>
+        </div>
+
+        <details class="advanced-options">
+          <summary>Ajustes avanzados</summary>
+          <label data-ramp-field="tick">Intervalo de actualización
+            <div class="field-with-unit"><input id="rampTick" type="number" min="100" max="5000" step="100" value="500"><small>ms</small></div>
+          </label>
+        </details>
+      </div>
+
+      <div id="customPointsCard" class="config-step custom-points-block" hidden>
+        <div class="step-heading">
+          <span class="step-number">•</span>
+          <div><b>Puntos personalizados</b><small>Cada punto define tiempo y valor de ingeniería.</small></div>
+          <button id="addPointBtn" class="btn small" type="button">+ Punto</button>
+        </div>
+        <div class="table-wrap">
+          <table><thead><tr><th>#</th><th>Tiempo s</th><th>Valor</th><th></th></tr></thead><tbody id="pointsBody"></tbody></table>
+        </div>
+      </div>
+
+      <div class="config-step preview-step">
+        <div class="step-heading">
+          <span class="step-number">3</span>
+          <div><b>Revisá y ejecutá</b><small>Vista previa de la consigna antes de enviarla al equipo.</small></div>
+        </div>
+
+        <div id="rampSummary" class="ramp-summary"></div>
+        <div class="chart-wrap preview-chart-wrap"><canvas id="rampPreview" width="1000" height="360"></canvas></div>
+
+        <div class="ramp-action-stack">
+          <button id="runRampBtn" class="btn primary wide">▶ Ejecutar prueba</button>
+          <div class="button-grid two">
+            <button id="pauseRampBtn" class="btn">Ⅱ Pausar</button>
+            <button id="stopRampBtn" class="btn danger">■ Detener</button>
+          </div>
+        </div>
+        <p id="rampStatus" class="hint">La prueba respeta la escala activa y nunca ordena fuera de 4.0–20.0 mA.</p>
+      </div>
     </article>
 
     <article class="card ramp-live-card">
       <div class="card-head">
-        <div><span class="label">EJECUCIÓN</span><h2>Gráfica en vivo</h2></div>
+        <div><span class="label">EJECUCIÓN</span><h2>Seguimiento en vivo</h2></div>
         <span id="rampProgressText" class="pill muted">0%</span>
       </div>
       <div class="ramp-live-values">
@@ -113,28 +201,23 @@
       <div class="chart-wrap ramp-chart-wrap"><canvas id="rampChart" width="1000" height="420"></canvas></div>
       <div class="legend"><span><i class="line out"></i> Consigna</span><span><i class="line inp"></i> Entrada</span></div>
     </article>
-
-    <article class="card">
-      <div class="card-head"><div><span class="label">MULTIPUNTO</span><h2>Puntos personalizados</h2></div><button id="addPointBtn" class="btn small">+ Punto</button></div>
-      <div class="table-wrap"><table><thead><tr><th>#</th><th>Tiempo s</th><th>Valor</th><th></th></tr></thead><tbody id="pointsBody"></tbody></table></div>
-    </article>
   </section>
 
   <section id="tab-profiles" class="panel">
     <article class="card">
-      <div class="card-head"><div><span class="label">PERFILES</span><h2>Guardar configuración</h2></div></div>
+      <div class="card-head"><div><span class="label">ENSAYOS</span><h2>Guardar prueba</h2></div></div>
       <div class="form-grid single">
-        <label>Nombre<input id="profileName" placeholder="Ej. Presión 0–10 bar"></label>
+        <label>Nombre<input id="profileName" placeholder="Ej. Ciclo presión 0–10 bar"></label>
         <label>Descripción<textarea id="profileDesc" rows="3"></textarea></label>
       </div>
       <div class="button-grid two">
-        <button id="saveProfileBtn" class="btn primary">Guardar perfil</button>
+        <button id="saveProfileBtn" class="btn primary">Guardar ensayo</button>
         <button id="exportProfilesBtn" class="btn">Exportar JSON</button>
       </div>
       <label class="btn file wide">Importar JSON<input id="importProfiles" type="file" accept="application/json"></label>
     </article>
     <article class="card">
-      <div class="card-head"><div><span class="label">BIBLIOTECA</span><h2>Perfiles guardados</h2></div></div>
+      <div class="card-head"><div><span class="label">BIBLIOTECA</span><h2>Ensayos guardados</h2></div></div>
       <div id="profileList" class="profile-list"></div>
     </article>
   </section>
@@ -216,12 +299,12 @@
   <button class="tab active" data-tab="output"><span class="tab-icon">↗</span><small>Salida</small></button>
   <button class="tab" data-tab="input"><span class="tab-icon">↘</span><small>Entrada</small></button>
   <button class="tab" data-tab="ramps"><span class="tab-icon">⌁</span><small>Rampas</small></button>
-  <button class="tab" data-tab="profiles"><span class="tab-icon">▣</span><small>Perfiles</small></button>
+  <button class="tab" data-tab="profiles"><span class="tab-icon">▣</span><small>Ensayos</small></button>
   <button class="tab" data-tab="calibration"><span class="tab-icon">◎</span><small>Calibrar</small></button>
   <button class="tab" data-tab="connect"><span class="tab-icon">⌁</span><small>Conexión</small></button>
 </nav>
 
-<footer>Simulink · Web Serial / HC-05 · <span id="version">v1.3.3</span></footer>
-<script src="app.js?v=1.3.3" defer></script>
+<footer>Simulink · Web Serial / HC-05 · <span id="version">v1.4.0</span></footer>
+<script src="app.js?v=1.4.0" defer></script>
 </body>
 </html>

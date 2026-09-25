@@ -177,7 +177,7 @@
     <article class="card">
       <div class="card-head"><div><span class="label">CONEXIÓN</span><h2>HC-05 / Simulación</h2></div></div>
       <div class="form-grid">
-        <label>Modo<select id="transportMode"><option value="simulation">Simulación</option><option value="serial">Web Serial / HC-05</option></select></label>
+        <label>Modo<select id="transportMode"><option value="serial" selected>Web Serial / HC-05</option><option value="simulation">Simulación</option></select></label>
         <label>Baud rate<select id="baudRate"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select></label>
         <label>Actualización simulación (ms)<input id="simInterval" type="number" min="100" max="5000" step="100" value="500"></label>
         <label>Desvío simulado entrada (mA)<input id="simNoise" type="number" min="0" max="1" step="0.01" value="0.03"></label>
@@ -187,7 +187,8 @@
         <button id="disconnectBtn" class="btn" disabled>Desconectar</button>
       </div>
       <button id="startSimulationBtn" class="btn wide">Iniciar simulación</button>
-      <p id="modeStatus" class="hint">Modo simulación listo para usar sin hardware.</p>
+      <p id="modeStatus" class="hint">Web Serial listo. El HC-05 debe estar vinculado previamente en Android.</p>
+      <div id="serialDiag" class="summary compact">Diagnóstico: esperando selección del puerto.</div>
       <div class="summary" id="scaleSummary"></div>
     </article>
 

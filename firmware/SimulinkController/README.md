@@ -38,3 +38,15 @@ El valor inicial supone HIGH = lazo abierto.
 
 ## Nota sobre SET:OUTPUT:OFF
 No se indicó un pin físico de habilitación/desconexión de salida. Por seguridad, OFF mantiene 4.0 mA. Si la placa incorpora un transistor, relé o enable para abrir físicamente la salida, se puede agregar ese pin al firmware.
+
+
+## Lógica de alarma de lazo
+
+- D8 en HIGH = error / lazo abierto.
+- El buzzer es activo.
+- Al encender la placa, la alarma de lazo comienza desarmada.
+- Si la placa arranca con la carga desconectada, el buzzer permanece apagado.
+- La alarma solo se arma después de detectar el lazo cerrado de forma continua durante más de 5 segundos.
+- Una vez armada, si la carga se desconecta y D8 pasa a HIGH, el buzzer queda encendido.
+- El buzzer se apaga inmediatamente al reconectar la carga.
+- El estado periódico agrega `ARM=0/1` para diagnóstico.

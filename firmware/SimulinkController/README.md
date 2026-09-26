@@ -50,3 +50,23 @@ No se indicó un pin físico de habilitación/desconexión de salida. Por seguri
 - Una vez armada, si la carga se desconecta y D8 pasa a HIGH, el buzzer queda encendido.
 - El buzzer se apaga inmediatamente al reconectar la carga.
 - El estado periódico agrega `ARM=0/1` para diagnóstico.
+
+
+## Lectura automática de perfiles y tipo de curva
+
+Al conectarse, la PWA envía automáticamente `PROFILE:LIST`. Cada slot ocupado
+responde también el tipo persistido en la cabecera de la 24C512:
+
+`PROFILE:1:COUNT=84:REP=5:TYPE=triangle`
+
+Tipos reconocidos: `linear`, `triangle`, `steps`, `cycle` y `custom`.
+Los perfiles grabados con firmware anterior se muestran como `unknown` hasta
+que sean guardados nuevamente.
+
+## Confirmación acústica de calibración
+
+El buzzer activo en D6 produce un pitido corto de aproximadamente 90 ms cuando
+una calibración eléctrica se guarda correctamente en la 24C512. El envío
+normal desde la PWA genera un solo pitido al completar el comando final
+`CAL:*:POINTS`. La alarma de lazo abierto conserva prioridad y permanece
+continua mientras corresponda.

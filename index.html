@@ -7,7 +7,7 @@
   <meta name="description" content="Simulink - simulación y medición 4-20 mA mediante Web Serial y HC-05">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.9.0">
+  <link rel="stylesheet" href="styles.css?v=1.10.0">
   <title>Simulink · 4–20 mA</title>
 </head>
 <body>
@@ -15,7 +15,7 @@
   <div class="app-splash-card">
     <div class="splash-brand">UconnectME</div>
     <div class="splash-division">Instrumentación</div>
-    <div class="splash-product">Simulink <span>v1.9.0</span></div>
+    <div class="splash-product">Simulink <span>v1.10.0</span></div>
     <div class="splash-loader" aria-hidden="true"><i id="splashProgressBar"></i></div>
     <div id="splashProgressText" class="splash-progress-text">Iniciando instrumento… 0%</div>
   </div>
@@ -186,75 +186,72 @@
       </section>
 
       <section id="ramp-pane-custom" class="ramp-pane">
-        <div class="multipoint-scroll-header">
-          <span>Área de edición gráfica</span>
-          <small>Seguimiento automático activo mientras agregás puntos.</small>
+        <div class="ramp-pane-head">
+          <div><span class="label">MULTIPUNTO</span><h3>Constructor por tramos</h3></div>
+          <p>Definí cuánto dura el próximo tramo y a qué valor debe llegar. La gráfica se construye automáticamente.</p>
         </div>
-        <div class="horizontal-scroll-shell" tabindex="0" aria-label="Editor multipunto desplazable horizontalmente">
-          <div class="horizontal-scroll-content">
-            <div id="customPointsCard" class="custom-points-block">
-          <div class="ramp-pane-head">
-            <div><span class="label">MULTIPUNTO</span><h3>Construí la curva sobre la gráfica</h3></div>
-            <p>El origen está fijado en t = 0 s. Activá “Agregar punto” y tocá la gráfica.</p>
-          </div>
 
-          <div class="custom-editor-toolbar">
-            <button id="addPointBtn" class="btn primary" type="button">＋ Agregar punto</button>
-            <button id="deletePointBtn" class="btn danger" type="button" disabled>Eliminar seleccionado</button>
-            <button id="clearPointsBtn" class="btn" type="button">Limpiar curva</button>
-          </div>
+        <input id="customTimeMax" type="hidden" value="60">
+        <input id="customTimeSnap" type="hidden" value="0.5">
 
-          <div id="customEditorHint" class="custom-editor-hint">
-            Activá “Agregar punto” y luego tocá cualquier lugar dentro de la gráfica.
-          </div>
-
-          <div class="custom-editor-settings">
-            <label>Ventana de tiempo
-              <div class="field-with-unit"><input id="customTimeMax" type="number" min="1" max="3600" step="1" value="60"><small>s</small></div>
-            </label>
-            <label>Ajuste temporal
-              <select id="customTimeSnap">
-                <option value="0.1">0.1 s</option>
-                <option value="0.5" selected>0.5 s</option>
-                <option value="1">1 s</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="chart-wrap custom-editor-chart-wrap">
-            <canvas id="customCurveChart"></canvas>
-          </div>
-
-          <div class="custom-selected-panel">
-            <div class="custom-selected-title">
-              <div><span class="label">PUNTO SELECCIONADO</span><b id="customSelectedLabel">Origen</b></div>
-              <span id="customPointCount" class="pill muted">1 punto</span>
+        <div id="customPointsCard" class="multipoint-builder">
+          <div class="multipoint-chart-column">
+            <div class="chart-wrap custom-editor-chart-wrap">
+              <canvas id="customCurveChart"></canvas>
             </div>
-            <div class="custom-selected-grid">
-              <label>Tiempo
-                <div class="field-with-unit"><input id="customPointTime" type="number" min="0" step="0.1" value="0"><small>s</small></div>
-              </label>
-              <label>Valor
-                <div class="field-with-unit"><input id="customPointValue" type="number" step="0.1" value="0"><small id="customPointUnit"></small></div>
-              </label>
+            <div class="custom-point-list-title">
+              <b>Secuencia</b>
+              <small>Tocá un punto para seleccionarlo y corregirlo.</small>
             </div>
-            <button id="applyCustomPointBtn" class="btn wide" type="button">Aplicar cambios al punto</button>
-          </div>
-
-          <div>
-            <div class="custom-point-list-title"><b>Puntos de la curva</b><small>Tocá un punto para seleccionarlo.</small></div>
             <div id="customPointList" class="custom-point-list"></div>
           </div>
 
-          <div class="custom-curve-actions">
-            <button id="simulateCustomBtn" class="btn primary" type="button">▶ Simular curva</button>
-            <button id="saveCustomProfileBtn" class="btn" type="button">Guardar como ensayo</button>
-            <button id="sendCustomDeviceBtn" class="btn" type="button">Guardar en equipo</button>
-          </div>
+          <div class="multipoint-controls-column">
+            <article class="multipoint-control-card next-point-card">
+              <div class="mini-card-head">
+                <div><span class="label">SIGUIENTE TRAMO</span><h4>Agregar punto</h4></div>
+                <span id="customPointCount" class="pill muted">1 punto</span>
+              </div>
 
-          <div class="ramp-pane-footer">
-            <button id="customPreviewBtn" class="btn">Ver vista previa →</button>
-          </div>
+              <label>Duración del tramo
+                <div class="field-with-unit">
+                  <input id="customNextDuration" type="number" min="0.1" max="3600" step="0.1" value="5">
+                  <small>s</small>
+                </div>
+              </label>
+
+              <label>Valor objetivo
+                <div class="field-with-unit">
+                  <input id="customNextValue" type="number" step="0.1" value="50">
+                  <small id="customNextUnit"></small>
+                </div>
+              </label>
+
+              <input id="customNextValueSlider" class="range" type="range" min="0" max="100" step="0.1" value="50">
+              <button id="addNextPointBtn" class="btn primary wide" type="button">＋ Agregar siguiente punto</button>
+              <p class="hint">El tiempo del nuevo punto se calcula automáticamente a partir del punto anterior.</p>
+            </article>
+
+            <article class="multipoint-control-card selected-point-card">
+              <div class="mini-card-head">
+                <div><span class="label">EDITAR</span><h4 id="customSelectedLabel">Origen</h4></div>
+                <button id="deletePointBtn" class="btn small danger" type="button" disabled>Eliminar</button>
+              </div>
+
+              <div class="custom-selected-grid">
+                <label>Tiempo absoluto
+                  <div class="field-with-unit"><input id="customPointTime" type="number" min="0" step="0.1" value="0"><small>s</small></div>
+                </label>
+                <label>Valor
+                  <div class="field-with-unit"><input id="customPointValue" type="number" step="0.1" value="0"><small id="customPointUnit"></small></div>
+                </label>
+              </div>
+              <button id="applyCustomPointBtn" class="btn wide" type="button">Aplicar cambios</button>
+            </article>
+
+            <div class="multipoint-bottom-actions">
+              <button id="clearPointsBtn" class="btn danger" type="button">Limpiar curva</button>
+              <button id="customPreviewBtn" class="btn primary" type="button">Continuar a vista previa →</button>
             </div>
           </div>
         </div>
@@ -273,6 +270,22 @@
           <button id="previewSimulateBtn" class="btn">▷ Simular sin hardware</button>
           <button id="runRampBtn" class="btn primary">▶ Ejecutar prueba</button>
         </div>
+
+        <div class="ramp-save-panel">
+          <div class="ramp-save-head">
+            <div><span class="label">GUARDAR PRUEBA</span><h3>Convertir esta rampa en ensayo</h3></div>
+            <span id="rampSaveStatus" class="hint"></span>
+          </div>
+          <div class="ramp-save-grid">
+            <label>Nombre<input id="profileName" placeholder="Ej. Prueba válvula 0–100 %"></label>
+            <label>Descripción<input id="profileDesc" placeholder="Opcional"></label>
+          </div>
+          <div class="button-grid two">
+            <button id="saveProfileBtn" class="btn">Guardar en biblioteca</button>
+            <button id="saveCurrentRampDeviceBtn" class="btn primary">Guardar en memoria del equipo</button>
+          </div>
+        </div>
+
         <p class="hint">La consigna siempre se limita al rango de ingeniería configurado y luego se convierte a 4–20 mA.</p>
       </section>
 
@@ -298,67 +311,87 @@
   </section>
 
   <section id="tab-profiles" class="panel">
-    <article class="card">
-      <div class="card-head"><div><span class="label">ENSAYOS</span><h2>Guardar prueba</h2></div></div>
-      <div class="form-grid single">
-        <label>Nombre<input id="profileName" placeholder="Ej. Ciclo presión 0–10 bar"></label>
-        <label>Descripción<textarea id="profileDesc" rows="3"></textarea></label>
+    <article class="card section-tabs-card">
+      <div class="section-title-row">
+        <div><span class="label">ENSAYOS</span><h2>Ensayos guardados</h2></div>
       </div>
-      <div class="button-grid two">
-        <button id="saveProfileBtn" class="btn primary">Guardar ensayo</button>
-        <button id="exportProfilesBtn" class="btn">Exportar JSON</button>
-      </div>
-      <label class="btn file wide">Importar JSON<input id="importProfiles" type="file" accept="application/json"></label>
-    </article>
-    <article class="card">
-      <div class="card-head"><div><span class="label">BIBLIOTECA</span><h2>Ensayos guardados</h2></div></div>
-      <div id="profileList" class="profile-list"></div>
-    </article>
-    <article class="card device-memory-card">
-      <div class="card-head">
-        <div>
-          <span class="label">INSTRUMENTO</span>
-          <h2>Memoria 24C512</h2>
-          <p class="card-subtitle">16 espacios para ejecutar ensayos sin depender del teléfono.</p>
+
+      <nav class="section-subtabs" aria-label="Ensayos">
+        <button class="section-subtab active" type="button" data-subtab-group="profiles" data-subtab-pane="library">Biblioteca</button>
+        <button class="section-subtab" type="button" data-subtab-group="profiles" data-subtab-pane="memory">Memoria del equipo</button>
+      </nav>
+
+      <section class="section-subpane active" data-subpane-group="profiles" data-subpane="library">
+        <div class="subpane-head">
+          <div><span class="label">BIBLIOTECA</span><h3>Ensayos de la aplicación</h3></div>
+          <p>Los ensayos se crean desde Rampas → Vista previa.</p>
         </div>
-        <button id="refreshDeviceProfilesBtn" class="btn small" type="button">Actualizar</button>
-      </div>
-      <div id="deviceMemoryStatus" class="summary compact">Conectá el HC-05 y presioná Actualizar para leer la memoria del equipo.</div>
-      <div id="deviceProfileList" class="device-slot-grid"></div>
+        <div id="profileList" class="profile-list"></div>
+      </section>
+
+      <section class="section-subpane" data-subpane-group="profiles" data-subpane="memory">
+        <div class="subpane-head">
+          <div>
+            <span class="label">INSTRUMENTO</span>
+            <h3>Memoria del equipo</h3>
+            <p>16 espacios almacenados físicamente en la EEPROM 24C512.</p>
+          </div>
+          <button id="refreshDeviceProfilesBtn" class="btn small" type="button">Actualizar</button>
+        </div>
+        <div id="deviceMemoryStatus" class="summary compact">Conectá el HC-05 para leer la memoria del equipo.</div>
+        <div id="deviceProfileList" class="device-slot-grid"></div>
+      </section>
     </article>
   </section>
 
   <section id="tab-calibration" class="panel">
-    <article class="card">
-      <div class="card-head"><div><span class="label">SALIDA</span><h2>Escala del sensor</h2></div></div>
-      <div class="form-grid">
-        <label>Tipo de sensor<select id="outSensorType"></select></label>
-        <label>Unidad<input id="outSensorUnit" value="A"></label>
-        <label>Mínimo ingeniería<input id="outSensorMin" type="number" step="0.001" value="0"></label>
-        <label>Máximo ingeniería<input id="outSensorMax" type="number" step="0.001" value="100"></label>
-        <label>Corriente mínima mA<input id="outCurrentMin" type="number" value="4.0" readonly></label>
-        <label>Corriente máxima mA<input id="outCurrentMax" type="number" value="20.0" readonly></label>
-        <label>Medida real en punto 4 mA<input id="outMeasuredLow" type="number" step="0.001" value="4.000"></label>
-        <label>Medida real en punto 20 mA<input id="outMeasuredHigh" type="number" step="0.001" value="20.000"></label>
+    <article class="card section-tabs-card">
+      <div class="section-title-row">
+        <div><span class="label">CALIBRACIÓN</span><h2>Escalas y ajuste eléctrico</h2></div>
       </div>
-      <div id="outCalibrationInfo" class="cal-info"></div>
-      <div class="button-grid two"><button id="applyOutScaleBtn" class="btn primary">Aplicar salida</button><button id="sendOutCalBtn" class="btn">Enviar calibración</button></div>
-    </article>
 
-    <article class="card">
-      <div class="card-head"><div><span class="label">ENTRADA</span><h2>Escala del sensor</h2></div></div>
-      <div class="form-grid">
-        <label>Tipo de sensor<select id="inSensorType"></select></label>
-        <label>Unidad<input id="inSensorUnit" value="A"></label>
-        <label>Mínimo ingeniería<input id="inSensorMin" type="number" step="0.001" value="0"></label>
-        <label>Máximo ingeniería<input id="inSensorMax" type="number" step="0.001" value="100"></label>
-        <label>Corriente mínima mA<input id="inCurrentMin" type="number" value="4.0" readonly></label>
-        <label>Corriente máxima mA<input id="inCurrentMax" type="number" value="20.0" readonly></label>
-        <label>Lectura en punto 4 mA<input id="inMeasuredLow" type="number" step="0.001" value="4.000"></label>
-        <label>Lectura en punto 20 mA<input id="inMeasuredHigh" type="number" step="0.001" value="20.000"></label>
-      </div>
-      <div id="inCalibrationInfo" class="cal-info"></div>
-      <div class="button-grid two"><button id="applyInScaleBtn" class="btn primary">Aplicar entrada</button><button id="sendInCalBtn" class="btn">Enviar calibración</button></div>
+      <nav class="section-subtabs" aria-label="Calibración">
+        <button class="section-subtab active" type="button" data-subtab-group="calibration" data-subtab-pane="out">Salida</button>
+        <button class="section-subtab" type="button" data-subtab-group="calibration" data-subtab-pane="in">Entrada</button>
+      </nav>
+
+      <section class="section-subpane active" data-subpane-group="calibration" data-subpane="out">
+        <div class="subpane-head"><div><span class="label">SALIDA</span><h3>Generador 4–20 mA</h3></div></div>
+        <div class="form-grid">
+          <label>Tipo de sensor<select id="outSensorType"></select></label>
+          <label>Unidad<input id="outSensorUnit" value="A"></label>
+          <label>Mínimo ingeniería<input id="outSensorMin" type="number" step="0.001" value="0"></label>
+          <label>Máximo ingeniería<input id="outSensorMax" type="number" step="0.001" value="100"></label>
+          <label>Corriente mínima mA<input id="outCurrentMin" type="number" value="4.0" readonly></label>
+          <label>Corriente máxima mA<input id="outCurrentMax" type="number" value="20.0" readonly></label>
+          <label>Medida real en punto 4 mA<input id="outMeasuredLow" type="number" step="0.001" value="4.000"></label>
+          <label>Medida real en punto 20 mA<input id="outMeasuredHigh" type="number" step="0.001" value="20.000"></label>
+        </div>
+        <div id="outCalibrationInfo" class="cal-info"></div>
+        <div class="button-grid two">
+          <button id="applyOutScaleBtn" class="btn primary">Aplicar salida</button>
+          <button id="sendOutCalBtn" class="btn">Enviar calibración</button>
+        </div>
+      </section>
+
+      <section class="section-subpane" data-subpane-group="calibration" data-subpane="in">
+        <div class="subpane-head"><div><span class="label">ENTRADA</span><h3>Medidor 4–20 mA</h3></div></div>
+        <div class="form-grid">
+          <label>Tipo de sensor<select id="inSensorType"></select></label>
+          <label>Unidad<input id="inSensorUnit" value="A"></label>
+          <label>Mínimo ingeniería<input id="inSensorMin" type="number" step="0.001" value="0"></label>
+          <label>Máximo ingeniería<input id="inSensorMax" type="number" step="0.001" value="100"></label>
+          <label>Corriente mínima mA<input id="inCurrentMin" type="number" value="4.0" readonly></label>
+          <label>Corriente máxima mA<input id="inCurrentMax" type="number" value="20.0" readonly></label>
+          <label>Lectura en punto 4 mA<input id="inMeasuredLow" type="number" step="0.001" value="4.000"></label>
+          <label>Lectura en punto 20 mA<input id="inMeasuredHigh" type="number" step="0.001" value="20.000"></label>
+        </div>
+        <div id="inCalibrationInfo" class="cal-info"></div>
+        <div class="button-grid two">
+          <button id="applyInScaleBtn" class="btn primary">Aplicar entrada</button>
+          <button id="sendInCalBtn" class="btn">Enviar calibración</button>
+        </div>
+      </section>
     </article>
   </section>
 
@@ -426,6 +459,6 @@
 
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js" defer></script>
-<script src="app.js?v=1.9.0" defer></script>
+<script src="app.js?v=1.10.0" defer></script>
 </body>
 </html>

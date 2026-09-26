@@ -7,14 +7,14 @@
   <meta name="description" content="Simulink - simulación y medición 4-20 mA mediante Web Serial y HC-05">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.7.0">
+  <link rel="stylesheet" href="styles.css?v=1.7.1">
   <title>Simulink · 4–20 mA</title>
 </head>
 <body>
 <header class="topbar">
   <div>
     <div class="eyebrow">UconnectME · Instrumentación</div>
-    <h1>Simulink <small style="font-size:11px;opacity:.65">v1.7.0</small></h1>
+    <h1>Simulink <small style="font-size:11px;opacity:.65">v1.7.1</small></h1>
   </div>
   <div class="top-actions">
     <span id="supportPill" class="pill">Web Serial</span>
@@ -178,7 +178,13 @@
       </section>
 
       <section id="ramp-pane-custom" class="ramp-pane">
-        <div id="customPointsCard" class="custom-points-block">
+        <div class="multipoint-scroll-header">
+          <span>Área de edición gráfica</span>
+          <small>Deslizá horizontalmente para recorrer todo el editor.</small>
+        </div>
+        <div class="horizontal-scroll-shell" tabindex="0" aria-label="Editor multipunto desplazable horizontalmente">
+          <div class="horizontal-scroll-content">
+            <div id="customPointsCard" class="custom-points-block">
           <div class="ramp-pane-head">
             <div><span class="label">MULTIPUNTO</span><h3>Construí la curva sobre la gráfica</h3></div>
             <p>El origen está fijado en t = 0 s. Activá “Agregar punto” y tocá la gráfica.</p>
@@ -240,6 +246,8 @@
 
           <div class="ramp-pane-footer">
             <button id="customPreviewBtn" class="btn">Ver vista previa →</button>
+          </div>
+            </div>
           </div>
         </div>
       </section>
@@ -408,8 +416,8 @@
   <button class="tab" data-tab="connect"><span class="tab-icon">⌁</span><small>Conexión</small></button>
 </nav>
 
-<footer>Simulink · Web Serial / HC-05 · <span id="version">v1.7.0</span></footer>
+<footer>Simulink · Web Serial / HC-05 · <span id="version">v1.7.1</span></footer>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js" defer></script>
-<script src="app.js?v=1.7.0" defer></script>
+<script src="app.js?v=1.7.1" defer></script>
 </body>
 </html>

@@ -266,3 +266,136 @@ button,input,select,textarea{font:inherit}.topbar{position:sticky;top:0;z-index:
     margin-bottom:16px;
   }
 }
+
+
+/* ========================================================================== */
+/* Editor gráfico multipunto · v1.6.0                                         */
+/* ========================================================================== */
+.custom-points-block{
+  display:grid;
+  gap:18px;
+  padding-bottom:18px;
+}
+.custom-heading{margin-bottom:0}
+.custom-editor-toolbar{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+}
+.custom-editor-toolbar .btn{min-height:46px}
+#addPointBtn.active-add{
+  background:var(--success);
+  border-color:var(--success);
+  color:#fff;
+}
+.custom-editor-hint{
+  padding:12px 14px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:var(--surface-alt);
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.5;
+}
+.custom-editor-settings{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.custom-editor-settings>label,
+.custom-selected-grid>label{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+}
+.custom-editor-chart-wrap{
+  height:390px;
+  cursor:crosshair;
+  touch-action:none;
+  padding:12px 10px 6px;
+}
+.custom-editor-chart-wrap canvas{
+  touch-action:none;
+}
+.custom-selected-panel{
+  display:grid;
+  gap:12px;
+  padding:15px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:var(--surface-alt);
+}
+.custom-selected-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.custom-selected-title>div{
+  display:grid;
+  gap:4px;
+}
+.custom-selected-title b{font-size:14px}
+.custom-selected-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.custom-point-list-title{
+  display:flex;
+  justify-content:space-between;
+  align-items:end;
+  gap:12px;
+  margin-bottom:9px;
+}
+.custom-point-list-title b{font-size:12px}
+.custom-point-list-title small{font-size:10px;color:var(--muted)}
+.custom-point-list{
+  display:flex;
+  gap:8px;
+  overflow-x:auto;
+  padding:2px 1px 7px;
+  scrollbar-width:thin;
+}
+.custom-point-chip{
+  min-width:126px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:var(--surface-alt);
+  color:var(--text);
+  padding:10px;
+  text-align:left;
+  display:grid;
+  gap:3px;
+  cursor:pointer;
+}
+.custom-point-chip b{font-size:11px;color:var(--brand)}
+.custom-point-chip span{font-size:10px;color:var(--muted)}
+.custom-point-chip.selected{
+  border-color:var(--brand);
+  box-shadow:0 0 0 2px var(--brand-soft);
+  background:var(--brand-soft);
+}
+.custom-curve-actions{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+}
+.custom-curve-actions .btn{min-height:52px}
+@media(max-width:759px){
+  .custom-editor-toolbar,
+  .custom-editor-settings,
+  .custom-selected-grid,
+  .custom-curve-actions{
+    grid-template-columns:1fr;
+  }
+  .custom-editor-chart-wrap{height:330px}
+  .custom-point-list-title{
+    align-items:flex-start;
+    flex-direction:column;
+    gap:3px;
+  }
+}

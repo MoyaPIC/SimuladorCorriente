@@ -381,6 +381,49 @@ function customTimeMax(){
   const configured=Math.max(1,Number($('customTimeMax')?.value)||60);
   return Math.max(configured,Math.ceil(pointsMax));
 }
+function customWorkspaceWidth(){
+  // Aproximadamente 18 px por segundo; mínimo suficiente para una vista tipo PC.
+  return Math.max(1080,Math.min(5200,Math.round(customTimeMax()*18)));
+}
+function syncCustomWorkspaceWidth(){
+  const content=document.querySelector('.horizontal-scroll-content');
+  if(!content)return;
+  const width=customWorkspaceWidth();
+  content.style.width=width+'px';
+  content.style.minWidth=width+'px';
+  content.style.maxWidth=width+'px';
+}
+function autoFollowCustomPoint(smooth=true){
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    const shell=document.querySelector('.horizontal-scroll-shell');
+    const canvas=$('customCurveChart');
+    const p=state.points[state.customSelectedIndex];
+    if(!shell||!canvas||!p||!customCurveChart)return;
+
+    const shellRect=shell.getBoundingClientRect();
+    const canvasRect=canvas.getBoundingClientRect();
+    const pixel=customCurveChart.scales.x.getPixelForValue(p.t);
+    const absoluteX=shell.scrollLeft+(canvasRect.left-shellRect.left)+pixel;
+
+    // Mantiene el punto nuevo cerca del 72% del ancho visible para dejar
+    // espacio a la derecha y continuar dibujando sin tocar la barra.
+    const wanted=absoluteX-shell.clientWidth*.72;
+    const maxScroll=Math.max(0,shell.scrollWidth-shell.clientWidth);
+    shell.scrollTo({
+      left:clamp(wanted,0,maxScroll),
+      behavior:smooth?'smooth':'auto'
+    });
+  }));
+}
+function extendCustomTimelineIfNeeded(t){
+  const current=Math.max(1,Number($('customTimeMax')?.value)||60);
+  if(t<current*.86)return false;
+  const expanded=Math.min(3600,Math.max(current+10,Math.ceil(current*1.35)));
+  $('customTimeMax').value=expanded;
+  syncCustomWorkspaceWidth();
+  return true;
+}
+
 function snapNumber(value,step){
   return Math.round(Number(value)/step)*step;
 }
@@ -461,6 +504,7 @@ function updateCustomChartData(){
 function drawCustomCurveChart(){
   if(!$('customPointsCard')||state.rampPane!=='custom'||!chartReady())return;
   ensureCustomOrigin();
+  syncCustomWorkspaceWidth();
   const canvas=$('customCurveChart');if(!canvas)return;
   const c=chartColors(),{lo,hi}=customScaleBounds();
   const data=state.points.map(p=>({x:p.t,y:p.v}));
@@ -549,6 +593,8 @@ function addCustomPointFromEvent(event){
   let t=clamp(snapNumber(pos.t,snap),snap,customTimeMax());
   const v=clamp(snapNumber(pos.v,.1),lo,hi);
 
+  extendCustomTimelineIfNeeded(t);
+
   const existing=state.points.findIndex((p,i)=>i>0&&Math.abs(p.t-t)<snap*.45);
   if(existing>0){
     state.points[existing].v=v;
@@ -558,10 +604,12 @@ function addCustomPointFromEvent(event){
     state.points.sort((a,b)=>a.t-b.t);
     state.customSelectedIndex=state.points.findIndex(p=>Math.abs(p.t-t)<.0001&&Math.abs(p.v-v)<.0001);
   }
+
   renderCustomPointPanel();
   updateCustomAddModeUI();
   drawCustomCurveChart();
   drawRampPreview();
+  autoFollowCustomPoint(true);
 }
 function handleCustomPointerDown(event){
   if($('rampType').value!=='custom'||!customCurveChart)return;
@@ -1039,9 +1087,20 @@ function bind(){
   $('deletePointBtn').onclick=deleteSelectedCustomPoint;
   $('clearPointsBtn').onclick=()=>{if(state.points.length<=1||confirm('¿Limpiar todos los puntos de la curva multipunto?'))clearCustomCurve();};
   $('applyCustomPointBtn').onclick=applySelectedCustomPoint;
-  $('customTimeMax').onchange=()=>{const maxPoint=Math.max(1,...state.points.map(p=>Number(p.t)||0));if(Number($('customTimeMax').value)<maxPoint)$('customTimeMax').value=Math.ceil(maxPoint);drawCustomCurveChart();};
+  $('customTimeMax').onchange=()=>{
+    const maxPoint=Math.max(1,...state.points.map(p=>Number(p.t)||0));
+    if(Number($('customTimeMax').value)<maxPoint)$('customTimeMax').value=Math.ceil(maxPoint);
+    syncCustomWorkspaceWidth();
+    drawCustomCurveChart();
+    autoFollowCustomPoint(false);
+  };
   $('customTimeSnap').onchange=()=>renderCustomEditor();
-  $('customPointList').onclick=e=>{const b=e.target.closest('[data-custom-select]');if(!b)return;state.customSelectedIndex=Number(b.dataset.customSelect);renderCustomEditor();};
+  $('customPointList').onclick=e=>{
+    const b=e.target.closest('[data-custom-select]');if(!b)return;
+    state.customSelectedIndex=Number(b.dataset.customSelect);
+    renderCustomEditor();
+    autoFollowCustomPoint(true);
+  };
   $('customCurveChart').addEventListener('pointerdown',handleCustomPointerDown);
   $('customCurveChart').addEventListener('pointermove',handleCustomPointerMove);
   $('customCurveChart').addEventListener('pointerup',handleCustomPointerUp);
@@ -1059,31 +1118,94 @@ function bind(){
   ['out','in'].forEach(p=>{$(p+'SensorType').onchange=()=>setPresetFromType(p);['SensorUnit','SensorMin','SensorMax','CurrentMin','CurrentMax','MeasuredLow','MeasuredHigh'].forEach(s=>$(p+s).oninput=()=>updateCalInfo(p,scaleFromInputs(p)));});$('applyOutScaleBtn').onclick=()=>applyScale('out');$('applyInScaleBtn').onclick=()=>applyScale('in');$('sendOutCalBtn').onclick=()=>sendCalibration('out');$('sendInCalBtn').onclick=()=>sendCalibration('in');
   $('terminalSendBtn').onclick=()=>{const v=$('terminalInput').value.trim();if(v){send(v);$('terminalInput').value='';}};$('clearTerminalBtn').onclick=()=>{$('terminal').textContent='';};$('exportCsvBtn').onclick=exportCsv;
   $('themeBtn').onclick=()=>{const root=document.documentElement;const next=root.dataset.theme==='dark'?'light':'dark';if(next==='dark')root.dataset.theme='dark';else delete root.dataset.theme;localStorage.setItem('simcorr_theme',next);refreshChartsForTheme();};
-  $('installBtn').onclick=async()=>{if(state.installPrompt){state.installPrompt.prompt();await state.installPrompt.userChoice;state.installPrompt=null;$('installBtn').hidden=true;}};
-  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();state.installPrompt=e;$('installBtn').hidden=false;});
-}
-async function requestLandscapeOrientation(){
-  try{
+  $('fullscreenBtn').onclick=()=>requestImmersiveMode();
+  $('installBtn').onclick=async()=>{
+    if(state.installPrompt){
+      state.installPrompt.prompt();
+      const choice=await state.installPrompt.userChoice;
+      if(choice?.outcome==='accepted'){
+        state.installPrompt=null;
+        $('installBtn').disabled=true;
+        $('installBtn').querySelector('b').textContent='Aplicación instalada';
+      }
+      return;
+    }
     const standalone=window.matchMedia?.('(display-mode: standalone)').matches===true || window.navigator.standalone===true;
-    if(!standalone)return;
+    if(standalone){
+      $('installBtn').disabled=true;
+      $('installBtn').querySelector('b').textContent='Aplicación instalada';
+    }else{
+      alert('La instalación se habilita cuando el navegador ofrece la opción de instalar la PWA.');
+    }
+  };
+  window.addEventListener('beforeinstallprompt',e=>{
+    e.preventDefault();
+    state.installPrompt=e;
+    $('installBtn').disabled=false;
+    $('installBtn').querySelector('b').textContent='Instalar aplicación';
+  });
+}
+function runStartupSplash(){
+  const splash=$('splashScreen');
+  const bar=$('splashProgressBar');
+  const textEl=$('splashProgressText');
+  if(!splash)return;
+
+  const started=performance.now();
+  const duration=2300;
+  const tick=()=>{
+    const elapsed=performance.now()-started;
+    const pct=Math.min(100,Math.round((elapsed/duration)*100));
+    if(bar)bar.style.width=pct+'%';
+    if(textEl)textEl.textContent=pct<100?'Iniciando instrumento… '+pct+'%':'Instrumento listo';
+    if(pct<100){
+      requestAnimationFrame(tick);
+    }else{
+      setTimeout(()=>{
+        splash.classList.add('hide');
+        setTimeout(()=>splash.remove(),420);
+      },180);
+    }
+  };
+  requestAnimationFrame(tick);
+}
+
+async function requestImmersiveMode(){
+  try{
+    if(document.fullscreenElement==null && document.documentElement.requestFullscreen){
+      await document.documentElement.requestFullscreen({navigationUI:'hide'});
+    }
+  }catch(e){}
+  try{
     if(screen.orientation&&typeof screen.orientation.lock==='function'){
       await screen.orientation.lock('landscape');
     }
-  }catch(e){
-    // Algunos navegadores/sistemas no permiten bloquear la orientación.
-    // La interfaz sigue funcionando y el CSS solicita girar el dispositivo.
-  }
+  }catch(e){}
 }
-function bindLandscapeOrientation(){
-  requestLandscapeOrientation();
-  const once=()=>requestLandscapeOrientation();
-  document.addEventListener('pointerdown',once,{once:true,passive:true});
+
+function bindImmersiveMode(){
+  // En una PWA instalada, el manifest ya solicita fullscreen + landscape.
+  // En navegador, las APIs necesitan una interacción del usuario.
+  const once=()=>requestImmersiveMode();
+  document.addEventListener('pointerdown',once,{once:true});
+  window.addEventListener('appinstalled',()=>{
+    if($('installBtn')){
+      $('installBtn').disabled=true;
+      $('installBtn').querySelector('b').textContent='Aplicación instalada';
+    }
+  });
 }
 
 function init(){
-  bindLandscapeOrientation();
+  runStartupSplash();
+  bindImmersiveMode();
   if(localStorage.getItem('simcorr_theme')==='dark')document.documentElement.dataset.theme='dark';
   loadLocal();populateTypeSelect('outSensorType');populateTypeSelect('inSensorType');fillScaleInputs('out',state.outScale);fillScaleInputs('in',state.inScale);renderPoints();renderProfiles();renderDeviceProfiles();bind();setRampPane('config');updateRampEditor();renderMain();
+  const standalone=window.matchMedia?.('(display-mode: standalone)').matches===true || window.navigator.standalone===true;
+  if(standalone&&$('installBtn')){
+    $('installBtn').disabled=true;
+    $('installBtn').querySelector('b').textContent='Aplicación instalada';
+  }
   $('transportMode').value='serial';
   $('connectBtn').disabled=false;$('disconnectBtn').disabled=true;
   $('supportPill').textContent=('serial'in navigator)?'Web Serial disponible':'Web Serial no disponible';

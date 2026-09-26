@@ -1322,3 +1322,231 @@ footer{
     grid-template-columns:1fr;
   }
 }
+
+
+/* ========================================================================== */
+/* Navigation + nested sections + mobile multipoint builder · v1.10.0         */
+/* ========================================================================== */
+
+/* Real fallback when the browser refuses Screen Orientation Lock. */
+html.force-landscape{
+  width:100vw;
+  height:100vh;
+  overflow:hidden;
+}
+html.force-landscape body{
+  position:fixed;
+  top:0;
+  left:100vw;
+  width:100vh!important;
+  height:100vw!important;
+  min-width:100vh!important;
+  max-width:none!important;
+  overflow:auto;
+  transform:rotate(90deg);
+  transform-origin:0 0;
+}
+html.force-landscape .top-tabs{
+  display:grid!important;
+  grid-template-columns:repeat(6,minmax(90px,1fr))!important;
+  overflow:visible!important;
+}
+html.force-landscape .shell{
+  width:100%!important;
+  max-width:1500px!important;
+}
+html.force-landscape .form-grid,
+html.force-landscape .ramp-field-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+}
+
+/* Ensayos and Calibración are now one-card sections with internal tabs. */
+#tab-profiles.active,
+#tab-calibration.active{
+  display:block!important;
+}
+.section-tabs-card{
+  width:100%;
+}
+.section-title-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:14px;
+}
+.section-title-row h2{
+  margin:4px 0 0;
+}
+.section-subtabs{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  padding:6px;
+  margin-bottom:18px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:var(--surface-alt);
+}
+.section-subtab{
+  min-height:48px;
+  border:0;
+  border-radius:10px;
+  background:transparent;
+  color:var(--muted);
+  font-weight:850;
+  cursor:pointer;
+}
+.section-subtab.active{
+  background:var(--surface);
+  color:var(--brand);
+  box-shadow:0 4px 14px rgba(0,0,0,.08);
+}
+.section-subpane{
+  display:none;
+}
+.section-subpane.active{
+  display:block;
+}
+.subpane-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:18px;
+  margin-bottom:18px;
+  padding-bottom:14px;
+  border-bottom:1px solid var(--border);
+}
+.subpane-head h3{
+  margin:4px 0 0;
+}
+.subpane-head p{
+  margin:5px 0 0;
+  color:var(--muted);
+  font-size:11px;
+}
+
+/* Save belongs to Rampas. */
+.ramp-save-panel{
+  margin-top:18px;
+  padding:16px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:var(--surface-alt);
+}
+.ramp-save-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:14px;
+  margin-bottom:13px;
+}
+.ramp-save-head h3{
+  margin:4px 0 0;
+  font-size:15px;
+}
+.ramp-save-grid{
+  display:grid;
+  grid-template-columns:1fr 1.3fr;
+  gap:12px;
+}
+.ramp-save-grid label{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+}
+
+/* New multipoint workflow: form first, chart always visible. */
+.multipoint-builder{
+  display:grid;
+  grid-template-columns:minmax(0,1.45fr) minmax(300px,.65fr);
+  gap:16px;
+  align-items:start;
+}
+.multipoint-chart-column,
+.multipoint-controls-column{
+  min-width:0;
+}
+.multipoint-chart-column{
+  display:grid;
+  gap:12px;
+}
+.multipoint-controls-column{
+  display:grid;
+  gap:12px;
+}
+.custom-editor-chart-wrap{
+  width:100%!important;
+  min-width:0!important;
+  height:430px;
+  cursor:default!important;
+  touch-action:pan-y!important;
+}
+.multipoint-control-card{
+  padding:14px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:var(--surface-alt);
+}
+.multipoint-control-card label{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+  margin-top:11px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+}
+.mini-card-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+.mini-card-head h4{
+  margin:3px 0 0;
+  font-size:14px;
+}
+.next-point-card .range{
+  margin:14px 0;
+}
+.multipoint-bottom-actions{
+  display:grid;
+  grid-template-columns:.8fr 1.2fr;
+  gap:10px;
+}
+
+/* Old horizontal workspace is no longer part of the new builder. */
+.multipoint-scroll-header,
+.horizontal-scroll-shell,
+.horizontal-scroll-content,
+.custom-editor-toolbar,
+.custom-editor-settings,
+.custom-curve-actions{
+  display:none!important;
+}
+
+@media(max-width:900px){
+  .multipoint-builder{
+    grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr);
+    gap:10px;
+  }
+  .custom-editor-chart-wrap{
+    height:320px;
+  }
+  .multipoint-control-card{
+    padding:11px;
+  }
+  .ramp-save-grid{
+    grid-template-columns:1fr 1fr;
+  }
+}
+
+html.force-landscape .multipoint-builder{
+  grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr)!important;
+}
+html.force-landscape .custom-editor-chart-wrap{
+  height:min(52vw,340px)!important;
+}

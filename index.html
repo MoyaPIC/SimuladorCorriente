@@ -7,14 +7,14 @@
   <meta name="description" content="Simulink - simulación y medición 4-20 mA mediante Web Serial y HC-05">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.4.2">
+  <link rel="stylesheet" href="styles.css?v=1.5.0">
   <title>Simulink · 4–20 mA</title>
 </head>
 <body>
 <header class="topbar">
   <div>
     <div class="eyebrow">UconnectME · Instrumentación</div>
-    <h1>Simulink <small style="font-size:11px;opacity:.65">v1.4.2</small></h1>
+    <h1>Simulink <small style="font-size:11px;opacity:.65">v1.5.0</small></h1>
   </div>
   <div class="top-actions">
     <span id="supportPill" class="pill">Web Serial</span>
@@ -71,6 +71,11 @@
         <button id="resetStatsBtn" class="btn">Reset estadísticas</button>
         <button id="exportCsvBtn" class="btn">Exportar CSV</button>
       </div>
+      <div class="chart-section-head">
+        <div><span class="label">HISTÓRICO</span><h3>Consigna vs. entrada medida</h3></div>
+        <span class="chart-hint">4–20 mA</span>
+      </div>
+      <div class="chart-wrap input-chart-wrap"><canvas id="inputChart"></canvas></div>
       <div class="summary compact" id="inputScaleSummary"></div>
     </article>
   </section>
@@ -197,7 +202,6 @@
       </div>
       <div class="progress"><i id="rampProgressFill"></i></div>
       <div class="chart-wrap ramp-chart-wrap"><canvas id="rampChart" width="1000" height="420"></canvas></div>
-      <div class="legend"><span><i class="line out"></i> Consigna</span><span><i class="line inp"></i> Entrada</span></div>
     </article>
   </section>
 
@@ -327,7 +331,8 @@
   <button class="tab" data-tab="connect"><span class="tab-icon">⌁</span><small>Conexión</small></button>
 </nav>
 
-<footer>Simulink · Web Serial / HC-05 · <span id="version">v1.4.2</span></footer>
-<script src="app.js?v=1.4.2" defer></script>
+<footer>Simulink · Web Serial / HC-05 · <span id="version">v1.5.0</span></footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js" defer></script>
+<script src="app.js?v=1.5.0" defer></script>
 </body>
 </html>

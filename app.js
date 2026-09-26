@@ -31,7 +31,7 @@ const state={
   samples:[],chart:[],profiles:[],points:[{t:0,v:0}], rampTimer:null,rampPaused:false,rampState:null,
   installPrompt:null,rampTrace:[],
   deviceProfiles:Array(16).fill(null),deviceSlotNames:{},awaitingProfileList:false,pendingUploadIndex:null,pendingUploadProfile:null,
-  customAddMode:false,customSelectedIndex:0,customDraggingIndex:null
+  customAddMode:false,customSelectedIndex:0,customDraggingIndex:null,rampPane:'config'
 };
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function engToMa(v,s){const lo=Math.min(s.min,s.max),hi=Math.max(s.min,s.max),cv=clamp(Number(v),lo,hi);const span=s.max-s.min||1;const ma=s.currentMin+(cv-s.min)*(s.currentMax-s.currentMin)/span;return clamp(ma,4,20);}
@@ -329,6 +329,33 @@ function updateScaleCards(){
     el.max=hi;
   });
 }
+function setRampPane(name){
+  const valid=['config','custom','preview','run'];
+  if(!valid.includes(name))name='config';
+
+  // Multipunto solo tiene sentido cuando el tipo seleccionado es custom.
+  if(name==='custom'&&$('rampType').value!=='custom')name='config';
+
+  state.rampPane=name;
+  document.querySelectorAll('.ramp-subtab').forEach(btn=>{
+    btn.classList.toggle('active',btn.dataset.rampPane===name);
+  });
+  document.querySelectorAll('.ramp-pane').forEach(pane=>{
+    pane.classList.toggle('active',pane.id==='ramp-pane-'+name);
+  });
+
+  requestAnimationFrame(()=>{
+    if(name==='custom')drawCustomCurveChart();
+    if(name==='preview')drawRampPreview();
+    if(name==='run')drawRampChart();
+  });
+}
+function bindRampTabs(){
+  document.querySelectorAll('.ramp-subtab').forEach(btn=>{
+    btn.addEventListener('click',()=>setRampPane(btn.dataset.rampPane));
+  });
+}
+
 const RAMP_META={
   linear:{label:'Lineal',guide:'La salida avanza de forma continua desde el valor inicial al final.',fields:['start','end','rise','repeats','tick']},
   triangle:{label:'Triangular',guide:'La salida sube al valor final y luego vuelve al inicial.',fields:['start','end','rise','fall','repeats','tick']},
@@ -432,7 +459,7 @@ function updateCustomChartData(){
   customCurveChart.update('none');
 }
 function drawCustomCurveChart(){
-  if(!$('customPointsCard')||$('customPointsCard').hidden||!chartReady())return;
+  if(!$('customPointsCard')||state.rampPane!=='custom'||!chartReady())return;
   ensureCustomOrigin();
   const canvas=$('customCurveChart');if(!canvas)return;
   const c=chartColors(),{lo,hi}=customScaleBounds();
@@ -477,20 +504,36 @@ function renderCustomEditor(){
   drawCustomCurveChart();
   drawRampPreview();
 }
-function customChartPosition(event){
+function customPointerPosition(event){
   if(!customCurveChart)return null;
-  const pos=Chart.helpers.getRelativePosition(event,customCurveChart);
+  const canvas=$('customCurveChart');
+  if(!canvas)return null;
+  const rect=canvas.getBoundingClientRect();
+  if(!rect.width||!rect.height)return null;
+
+  // Chart.js trabaja en píxeles lógicos. Convertimos explícitamente desde las
+  // coordenadas CSS del PointerEvent para que funcione igual en PC y teléfono.
+  const x=(event.clientX-rect.left)*(customCurveChart.width/rect.width);
+  const y=(event.clientY-rect.top)*(customCurveChart.height/rect.height);
+  return{x,y};
+}
+function customChartPosition(event){
+  const pos=customPointerPosition(event);
+  if(!pos||!customCurveChart)return null;
   const area=customCurveChart.chartArea;
-  if(pos.x<area.left||pos.x>area.right||pos.y<area.top||pos.y>area.bottom)return null;
-  return{
-    t:customCurveChart.scales.x.getValueForPixel(pos.x),
-    v:customCurveChart.scales.y.getValueForPixel(pos.y)
-  };
+  if(!area||pos.x<area.left||pos.x>area.right||pos.y<area.top||pos.y>area.bottom)return null;
+
+  const t=customCurveChart.scales.x.getValueForPixel(pos.x);
+  const v=customCurveChart.scales.y.getValueForPixel(pos.y);
+  if(!Number.isFinite(t)||!Number.isFinite(v))return null;
+  return{t,v};
 }
 function selectNearestCustomPoint(event){
-  if(!customCurveChart)return -1;
-  const pos=Chart.helpers.getRelativePosition(event,customCurveChart);
-  let best=-1,bestD=18;
+  const pos=customPointerPosition(event);
+  if(!pos||!customCurveChart)return -1;
+
+  let best=-1;
+  let bestD=26;
   state.points.forEach((p,i)=>{
     const px=customCurveChart.scales.x.getPixelForValue(p.t);
     const py=customCurveChart.scales.y.getPixelForValue(p.v);
@@ -499,6 +542,7 @@ function selectNearestCustomPoint(event){
   });
   return best;
 }
+
 function addCustomPointFromEvent(event){
   const pos=customChartPosition(event);if(!pos)return;
   const snap=customTimeSnap(),{lo,hi}=customScaleBounds();
@@ -514,7 +558,10 @@ function addCustomPointFromEvent(event){
     state.points.sort((a,b)=>a.t-b.t);
     state.customSelectedIndex=state.points.findIndex(p=>Math.abs(p.t-t)<.0001&&Math.abs(p.v-v)<.0001);
   }
-  renderCustomEditor();
+  renderCustomPointPanel();
+  updateCustomAddModeUI();
+  drawCustomCurveChart();
+  drawRampPreview();
 }
 function handleCustomPointerDown(event){
   if($('rampType').value!=='custom'||!customCurveChart)return;
@@ -553,7 +600,9 @@ function handleCustomPointerUp(event){
   if(state.customDraggingIndex==null)return;
   state.customDraggingIndex=null;
   try{event.currentTarget.releasePointerCapture?.(event.pointerId);}catch(e){}
-  renderCustomEditor();
+  renderCustomPointPanel();
+  updateCustomChartData();
+  drawRampPreview();
 }
 function applySelectedCustomPoint(){
   const i=state.customSelectedIndex;
@@ -617,18 +666,36 @@ function openDeviceSaveDialogForProfile(p,index=null){
 }
 
 function updateRampEditor(){
-  const type=$('rampType').value,meta=RAMP_META[type]||RAMP_META.linear;
-  document.querySelectorAll('.ramp-type-btn').forEach(b=>b.classList.toggle('active',b.dataset.rampType===type));
-  document.querySelectorAll('[data-ramp-field]').forEach(el=>el.hidden=!meta.fields.includes(el.dataset.rampField));
-  $('customPointsCard').hidden=type!=='custom';
-  if(type==='custom')renderCustomEditor();
+  const type=$('rampType').value;
+  const meta=RAMP_META[type]||RAMP_META.linear;
+
+  document.querySelectorAll('.ramp-type-btn').forEach(b=>{
+    b.classList.toggle('active',b.dataset.rampType===type);
+  });
+  document.querySelectorAll('[data-ramp-field]').forEach(el=>{
+    el.hidden=!meta.fields.includes(el.dataset.rampField);
+  });
+
+  $('rampCustomTab').hidden=type!=='custom';
   $('rampTypeBadge').textContent=meta.label;
   $('rampGuideText').textContent=meta.guide;
   $('rampRiseLabel').textContent=type==='steps'?'Duración total':'Tiempo de subida';
   $('rampStartUnit').textContent=state.outScale.unit;
   $('rampEndUnit').textContent=state.outScale.unit;
+
+  if(type==='custom'){
+    ensureCustomOrigin();
+    renderCustomPointPanel();
+    if(state.rampPane==='config')setRampPane('custom');
+    else if(state.rampPane==='custom')requestAnimationFrame(drawCustomCurveChart);
+  }else if(state.rampPane==='custom'){
+    setRampPane('config');
+  }
+
+  // El resumen puede actualizarse aunque el canvas de vista previa esté oculto.
   drawRampPreview();
 }
+
 function drawRampPreview(){
   const r=getRampConfig(),seq=buildRamp(r);
   const values=(seq.length?seq:[r.start||0]).map(Number);
@@ -642,7 +709,7 @@ function drawRampPreview(){
     '<span>'+Math.max(1,r.repeats)+' rep.</span>'+
     '<span>≈ '+fmt(totalDuration,1)+' s</span>';
 
-  if(!$('tab-ramps').classList.contains('active')||!chartReady())return;
+  if(!$('tab-ramps').classList.contains('active')||state.rampPane!=='preview'||!chartReady())return;
   const lo=Math.min(Number(state.outScale.min),Number(state.outScale.max));
   const hi=Math.max(Number(state.outScale.min),Number(state.outScale.max));
   const c=chartColors();
@@ -676,7 +743,7 @@ function updateRampProgress(){
   $('rampProgressText').textContent=p+'%';$('rampProgressFill').style.width=p+'%';
 }
 function drawRampChart(){
-  if(!$('tab-ramps').classList.contains('active')||!chartReady())return;
+  if(!$('tab-ramps').classList.contains('active')||state.rampPane!=='run'||!chartReady())return;
   const canvas=$('rampChart');if(!canvas)return;
 
   const data=state.rampTrace||[];
@@ -748,6 +815,7 @@ function buildRamp(r){const tick=r.tick/1000,arr=[];const pushSeg=(a,b,d)=>{cons
 function stopRamp(){if(state.rampTimer)clearInterval(state.rampTimer);state.rampTimer=null;state.rampState=null;state.rampPaused=false;$('pauseRampBtn').textContent='Ⅱ Pausar';$('rampStatus').textContent='Rampa detenida.';updateRampProgress();drawRampChart();}
 function runRamp(simulationOnly=false){
   simulationOnly=simulationOnly===true;
+  setRampPane('run');
   if(state.rampTimer)clearInterval(state.rampTimer);
   const r=getRampConfig(),seq=buildRamp(r);if(!seq.length)return;
   state.rampTrace=[];state.rampPaused=false;state.rampState={r,seq,i:0,rep:0};
@@ -948,17 +1016,25 @@ function bindTabs(){
     if(b.dataset.tab==='profiles'){renderProfiles();renderDeviceProfiles();}
 
     requestAnimationFrame(()=>{
-      if(b.dataset.tab==='ramps'){drawRampPreview();drawRampChart();drawCustomCurveChart();}
+      if(b.dataset.tab==='ramps')setRampPane(state.rampPane||'config');
       if(b.dataset.tab==='input')drawChart();
     });
   }));
 }
 function bind(){
-  bindTabs();$('connectBtn').onclick=connectSerial;$('disconnectBtn').onclick=disconnectSerial;$('startSimulationBtn').onclick=startSimulation;$('transportMode').onchange=()=>{if($('transportMode').value==='serial'){stopSimulation();state.connected=false;$('connectBtn').disabled=false;$('disconnectBtn').disabled=true;$('supportPill').textContent='Web Serial';$('supportPill').className='pill';$('modeStatus').textContent='Web Serial seleccionado. Vinculá el HC-05 en Android y luego presioná Conectar.';setSerialDiag('esperando selección del puerto.');}else{$('modeStatus').textContent='Modo simulación listo para usar sin hardware.';}};
+  bindTabs();
+  bindRampTabs();$('connectBtn').onclick=connectSerial;$('disconnectBtn').onclick=disconnectSerial;$('startSimulationBtn').onclick=startSimulation;$('transportMode').onchange=()=>{if($('transportMode').value==='serial'){stopSimulation();state.connected=false;$('connectBtn').disabled=false;$('disconnectBtn').disabled=true;$('supportPill').textContent='Web Serial';$('supportPill').className='pill';$('modeStatus').textContent='Web Serial seleccionado. Vinculá el HC-05 en Android y luego presioná Conectar.';setSerialDiag('esperando selección del puerto.');}else{$('modeStatus').textContent='Modo simulación listo para usar sin hardware.';}};
   $('manualSlider').oninput=e=>{const v=clamp(Number(e.target.value),4,20);$('manualCurrent').value=v.toFixed(1);state.outputMa=v;renderMain();};$('manualSlider').onchange=e=>applyOutput(Number(e.target.value));$('manualCurrent').onchange=e=>applyOutput(Math.round(clamp(Number(e.target.value),4,20)*10)/10);$('minusBtn').onclick=()=>applyOutput(Math.round(clamp(state.outputMa-.1,4,20)*10)/10);$('plusBtn').onclick=()=>applyOutput(Math.round(clamp(state.outputMa+.1,4,20)*10)/10);$('applyCurrentBtn').onclick=()=>applyOutput(Math.round(clamp(Number($('manualCurrent').value),4,20)*10)/10);
   $('outputEnabled').onchange=async e=>send(e.target.checked?'SET:OUTPUT:ON':'SET:OUTPUT:OFF');
-  $('resetStatsBtn').onclick=()=>{state.samples=[];renderMain();};document.querySelectorAll('.ramp-type-btn').forEach(b=>b.onclick=()=>{$('rampType').value=b.dataset.rampType;updateRampEditor();});$('rampType').onchange=updateRampEditor;['rampStart','rampEnd','rampRise','rampHoldHigh','rampFall','rampHoldLow','rampSteps','rampRepeats','rampTick'].forEach(id=>$(id).addEventListener('input',drawRampPreview));
-  ['rampStart','rampEnd'].forEach(id=>$(id).addEventListener('change',e=>{const r=getRampConfig();e.target.value=id==='rampStart'?r.start:r.end;drawRampPreview();}));$('runRampBtn').onclick=()=>runRamp(false);$('pauseRampBtn').onclick=()=>{state.rampPaused=!state.rampPaused;$('pauseRampBtn').textContent=state.rampPaused?'▶ Continuar':'Ⅱ Pausar';$('rampStatus').textContent=state.rampPaused?'Rampa pausada.':'Rampa ejecutándose…';};$('stopRampBtn').onclick=stopRamp;
+  $('resetStatsBtn').onclick=()=>{state.samples=[];renderMain();};document.querySelectorAll('.ramp-type-btn').forEach(b=>b.onclick=()=>{
+    $('rampType').value=b.dataset.rampType;
+    updateRampEditor();
+    setRampPane(b.dataset.rampType==='custom'?'custom':'config');
+  });$('rampType').onchange=()=>{updateRampEditor();setRampPane($('rampType').value==='custom'?'custom':'config');};['rampStart','rampEnd','rampRise','rampHoldHigh','rampFall','rampHoldLow','rampSteps','rampRepeats','rampTick'].forEach(id=>$(id).addEventListener('input',drawRampPreview));
+  ['rampStart','rampEnd'].forEach(id=>$(id).addEventListener('change',e=>{const r=getRampConfig();e.target.value=id==='rampStart'?r.start:r.end;drawRampPreview();}));$('rampConfigNextBtn').onclick=()=>setRampPane($('rampType').value==='custom'?'custom':'preview');
+  $('customPreviewBtn').onclick=()=>setRampPane('preview');
+  $('previewSimulateBtn').onclick=()=>runRamp(true);
+  $('runRampBtn').onclick=()=>runRamp(false);$('pauseRampBtn').onclick=()=>{state.rampPaused=!state.rampPaused;$('pauseRampBtn').textContent=state.rampPaused?'▶ Continuar':'Ⅱ Pausar';$('rampStatus').textContent=state.rampPaused?'Rampa pausada.':'Rampa ejecutándose…';};$('stopRampBtn').onclick=stopRamp;
   $('addPointBtn').onclick=()=>{state.customAddMode=!state.customAddMode;updateCustomAddModeUI();};
   $('deletePointBtn').onclick=deleteSelectedCustomPoint;
   $('clearPointsBtn').onclick=()=>{if(state.points.length<=1||confirm('¿Limpiar todos los puntos de la curva multipunto?'))clearCustomCurve();};
@@ -988,7 +1064,7 @@ function bind(){
 }
 function init(){
   if(localStorage.getItem('simcorr_theme')==='dark')document.documentElement.dataset.theme='dark';
-  loadLocal();populateTypeSelect('outSensorType');populateTypeSelect('inSensorType');fillScaleInputs('out',state.outScale);fillScaleInputs('in',state.inScale);renderPoints();renderProfiles();renderDeviceProfiles();bind();updateRampEditor();renderMain();
+  loadLocal();populateTypeSelect('outSensorType');populateTypeSelect('inSensorType');fillScaleInputs('out',state.outScale);fillScaleInputs('in',state.inScale);renderPoints();renderProfiles();renderDeviceProfiles();bind();setRampPane('config');updateRampEditor();renderMain();
   $('transportMode').value='serial';
   $('connectBtn').disabled=false;$('disconnectBtn').disabled=true;
   $('supportPill').textContent=('serial'in navigator)?'Web Serial disponible':'Web Serial no disponible';

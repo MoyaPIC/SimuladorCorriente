@@ -7,14 +7,14 @@
   <meta name="description" content="Simulink - simulación y medición 4-20 mA mediante Web Serial y HC-05">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.6.0">
+  <link rel="stylesheet" href="styles.css?v=1.7.0">
   <title>Simulink · 4–20 mA</title>
 </head>
 <body>
 <header class="topbar">
   <div>
     <div class="eyebrow">UconnectME · Instrumentación</div>
-    <h1>Simulink <small style="font-size:11px;opacity:.65">v1.6.0</small></h1>
+    <h1>Simulink <small style="font-size:11px;opacity:.65">v1.7.0</small></h1>
   </div>
   <div class="top-actions">
     <span id="supportPill" class="pill">Web Serial</span>
@@ -81,16 +81,35 @@
   </section>
 
   <section id="tab-ramps" class="panel">
-    <article class="card ramp-builder-card">
-      <div class="card-head">
-        <div><span class="label">RAMPAS</span><h2>Crear una prueba</h2></div>
+    <article class="card ramp-workflow-card">
+      <div class="card-head ramp-main-head">
+        <div>
+          <span class="label">RAMPAS</span>
+          <h2>Constructor de ensayo</h2>
+          <p class="card-subtitle">Configurá, revisá y ejecutá la prueba por etapas.</p>
+        </div>
         <span id="rampTypeBadge" class="pill">Lineal</span>
       </div>
 
-      <div class="config-step">
-        <div class="step-heading">
-          <span class="step-number">1</span>
-          <div><b>Elegí el comportamiento</b><small>Seleccioná cómo querés que cambie la variable.</small></div>
+      <nav class="ramp-subtabs" aria-label="Etapas de configuración de rampa">
+        <button class="ramp-subtab active" type="button" data-ramp-pane="config">
+          <span>1</span><b>Configurar</b>
+        </button>
+        <button id="rampCustomTab" class="ramp-subtab" type="button" data-ramp-pane="custom" hidden>
+          <span>2</span><b>Multipunto</b>
+        </button>
+        <button class="ramp-subtab" type="button" data-ramp-pane="preview">
+          <span>3</span><b>Vista previa</b>
+        </button>
+        <button class="ramp-subtab" type="button" data-ramp-pane="run">
+          <span>4</span><b>Ejecución</b>
+        </button>
+      </nav>
+
+      <section id="ramp-pane-config" class="ramp-pane active">
+        <div class="ramp-pane-head">
+          <div><span class="label">PASO 1</span><h3>Tipo de prueba</h3></div>
+          <p>Elegí el comportamiento y completá únicamente los parámetros que necesita.</p>
         </div>
 
         <div class="ramp-type-grid">
@@ -98,7 +117,7 @@
           <button class="ramp-type-btn" type="button" data-ramp-type="triangle"><b>△ Triangular</b><small>Sube y vuelve</small></button>
           <button class="ramp-type-btn" type="button" data-ramp-type="steps"><b>▥ Escalonada</b><small>Avanza por pasos</small></button>
           <button class="ramp-type-btn" type="button" data-ramp-type="cycle"><b>↻ Ciclo</b><small>Sube, espera y baja</small></button>
-          <button class="ramp-type-btn wide-choice" type="button" data-ramp-type="custom"><b>⌁ Multipunto</b><small>Definí cada punto</small></button>
+          <button class="ramp-type-btn wide-choice" type="button" data-ramp-type="custom"><b>⌁ Multipunto</b><small>Construcción gráfica</small></button>
         </div>
 
         <select id="rampType" class="hidden-select" aria-label="Tipo de rampa">
@@ -108,16 +127,10 @@
           <option value="cycle">Ciclo</option>
           <option value="custom">Multipunto</option>
         </select>
+
         <p id="rampGuideText" class="hint ramp-guide">La salida avanzará de forma continua desde el valor inicial al final.</p>
-      </div>
 
-      <div class="config-step">
-        <div class="step-heading">
-          <span class="step-number">2</span>
-          <div><b>Definí valores y tiempos</b><small>Solo aparecen los parámetros necesarios para este tipo de prueba.</small></div>
-        </div>
-
-        <div class="ramp-field-grid">
+        <div class="ramp-field-grid ramp-parameter-grid">
           <label class="field-card" data-ramp-field="start">
             <span>Valor inicial</span>
             <div class="field-with-unit"><input id="rampStart" type="number" step="0.1" value="0"><small id="rampStartUnit"></small></div>
@@ -158,103 +171,113 @@
             <div class="field-with-unit"><input id="rampTick" type="number" min="100" max="5000" step="100" value="500"><small>ms</small></div>
           </label>
         </details>
-      </div>
 
-      <div id="customPointsCard" class="config-step custom-points-block" hidden>
-        <div class="step-heading custom-heading">
-          <span class="step-number">•</span>
+        <div class="ramp-pane-footer">
+          <button id="rampConfigNextBtn" class="btn primary">Continuar a vista previa →</button>
+        </div>
+      </section>
+
+      <section id="ramp-pane-custom" class="ramp-pane">
+        <div id="customPointsCard" class="custom-points-block">
+          <div class="ramp-pane-head">
+            <div><span class="label">MULTIPUNTO</span><h3>Construí la curva sobre la gráfica</h3></div>
+            <p>El origen está fijado en t = 0 s. Activá “Agregar punto” y tocá la gráfica.</p>
+          </div>
+
+          <div class="custom-editor-toolbar">
+            <button id="addPointBtn" class="btn primary" type="button">＋ Agregar punto</button>
+            <button id="deletePointBtn" class="btn danger" type="button" disabled>Eliminar seleccionado</button>
+            <button id="clearPointsBtn" class="btn" type="button">Limpiar curva</button>
+          </div>
+
+          <div id="customEditorHint" class="custom-editor-hint">
+            Activá “Agregar punto” y luego tocá cualquier lugar dentro de la gráfica.
+          </div>
+
+          <div class="custom-editor-settings">
+            <label>Ventana de tiempo
+              <div class="field-with-unit"><input id="customTimeMax" type="number" min="1" max="3600" step="1" value="60"><small>s</small></div>
+            </label>
+            <label>Ajuste temporal
+              <select id="customTimeSnap">
+                <option value="0.1">0.1 s</option>
+                <option value="0.5" selected>0.5 s</option>
+                <option value="1">1 s</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="chart-wrap custom-editor-chart-wrap">
+            <canvas id="customCurveChart"></canvas>
+          </div>
+
+          <div class="custom-selected-panel">
+            <div class="custom-selected-title">
+              <div><span class="label">PUNTO SELECCIONADO</span><b id="customSelectedLabel">Origen</b></div>
+              <span id="customPointCount" class="pill muted">1 punto</span>
+            </div>
+            <div class="custom-selected-grid">
+              <label>Tiempo
+                <div class="field-with-unit"><input id="customPointTime" type="number" min="0" step="0.1" value="0"><small>s</small></div>
+              </label>
+              <label>Valor
+                <div class="field-with-unit"><input id="customPointValue" type="number" step="0.1" value="0"><small id="customPointUnit"></small></div>
+              </label>
+            </div>
+            <button id="applyCustomPointBtn" class="btn wide" type="button">Aplicar cambios al punto</button>
+          </div>
+
           <div>
-            <b>Constructor multipunto</b>
-            <small>Activá “Agregar punto” y tocá la gráfica para construir la curva desde el origen.</small>
+            <div class="custom-point-list-title"><b>Puntos de la curva</b><small>Tocá un punto para seleccionarlo.</small></div>
+            <div id="customPointList" class="custom-point-list"></div>
+          </div>
+
+          <div class="custom-curve-actions">
+            <button id="simulateCustomBtn" class="btn primary" type="button">▶ Simular curva</button>
+            <button id="saveCustomProfileBtn" class="btn" type="button">Guardar como ensayo</button>
+            <button id="sendCustomDeviceBtn" class="btn" type="button">Guardar en equipo</button>
+          </div>
+
+          <div class="ramp-pane-footer">
+            <button id="customPreviewBtn" class="btn">Ver vista previa →</button>
           </div>
         </div>
+      </section>
 
-        <div class="custom-editor-toolbar">
-          <button id="addPointBtn" class="btn primary" type="button">＋ Agregar punto</button>
-          <button id="deletePointBtn" class="btn danger" type="button" disabled>Eliminar seleccionado</button>
-          <button id="clearPointsBtn" class="btn" type="button">Limpiar curva</button>
-        </div>
-
-        <div id="customEditorHint" class="custom-editor-hint">
-          Origen fijo: t = 0 s. Activá “Agregar punto” y luego tocá cualquier lugar dentro de la gráfica.
-        </div>
-
-        <div class="custom-editor-settings">
-          <label>Ventana de tiempo
-            <div class="field-with-unit"><input id="customTimeMax" type="number" min="1" max="3600" step="1" value="60"><small>s</small></div>
-          </label>
-          <label>Ajuste temporal
-            <select id="customTimeSnap">
-              <option value="0.1">0.1 s</option>
-              <option value="0.5" selected>0.5 s</option>
-              <option value="1">1 s</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="chart-wrap custom-editor-chart-wrap">
-          <canvas id="customCurveChart"></canvas>
-        </div>
-
-        <div class="custom-selected-panel">
-          <div class="custom-selected-title">
-            <div><span class="label">PUNTO SELECCIONADO</span><b id="customSelectedLabel">Origen</b></div>
-            <span id="customPointCount" class="pill muted">1 punto</span>
-          </div>
-          <div class="custom-selected-grid">
-            <label>Tiempo
-              <div class="field-with-unit"><input id="customPointTime" type="number" min="0" step="0.1" value="0"><small>s</small></div>
-            </label>
-            <label>Valor
-              <div class="field-with-unit"><input id="customPointValue" type="number" step="0.1" value="0"><small id="customPointUnit"></small></div>
-            </label>
-          </div>
-          <button id="applyCustomPointBtn" class="btn wide" type="button">Aplicar cambios al punto</button>
-        </div>
-
-        <div>
-          <div class="custom-point-list-title"><b>Puntos de la curva</b><small>También podés seleccionar un punto desde esta lista.</small></div>
-          <div id="customPointList" class="custom-point-list"></div>
-        </div>
-
-        <div class="custom-curve-actions">
-          <button id="simulateCustomBtn" class="btn primary" type="button">▶ Simular curva</button>
-          <button id="saveCustomProfileBtn" class="btn" type="button">Guardar como ensayo</button>
-          <button id="sendCustomDeviceBtn" class="btn" type="button">Guardar en equipo</button>
-        </div>
-      </div>
-
-      <div class="config-step preview-step">
-        <div class="step-heading">
-          <span class="step-number">3</span>
-          <div><b>Revisá y ejecutá</b><small>Vista previa de la consigna antes de enviarla al equipo.</small></div>
+      <section id="ramp-pane-preview" class="ramp-pane">
+        <div class="ramp-pane-head">
+          <div><span class="label">PASO 3</span><h3>Vista previa</h3></div>
+          <p>Revisá la curva completa antes de simularla o enviarla a la salida real.</p>
         </div>
 
         <div id="rampSummary" class="ramp-summary"></div>
-        <div class="chart-wrap preview-chart-wrap"><canvas id="rampPreview" width="1000" height="360"></canvas></div>
+        <div class="chart-wrap preview-chart-wrap"><canvas id="rampPreview"></canvas></div>
 
-        <div class="ramp-action-stack">
-          <button id="runRampBtn" class="btn primary wide">▶ Ejecutar prueba</button>
-          <div class="button-grid two">
-            <button id="pauseRampBtn" class="btn">Ⅱ Pausar</button>
-            <button id="stopRampBtn" class="btn danger">■ Detener</button>
-          </div>
+        <div class="preview-actions">
+          <button id="previewSimulateBtn" class="btn">▷ Simular sin hardware</button>
+          <button id="runRampBtn" class="btn primary">▶ Ejecutar prueba</button>
         </div>
-        <p id="rampStatus" class="hint">La prueba respeta la escala activa y nunca ordena fuera de 4.0–20.0 mA.</p>
-      </div>
-    </article>
+        <p class="hint">La consigna siempre se limita al rango de ingeniería configurado y luego se convierte a 4–20 mA.</p>
+      </section>
 
-    <article class="card ramp-live-card">
-      <div class="card-head">
-        <div><span class="label">EJECUCIÓN</span><h2>Seguimiento en vivo</h2></div>
-        <span id="rampProgressText" class="pill muted">0%</span>
-      </div>
-      <div class="ramp-live-values">
-        <div><span>Valor</span><b id="rampRunEng">—</b><small id="rampRunUnit"></small></div>
-        <div><span>Salida</span><b id="rampRunMa">—</b><small>mA</small></div>
-      </div>
-      <div class="progress"><i id="rampProgressFill"></i></div>
-      <div class="chart-wrap ramp-chart-wrap"><canvas id="rampChart" width="1000" height="420"></canvas></div>
+      <section id="ramp-pane-run" class="ramp-pane">
+        <div class="ramp-pane-head run-pane-head">
+          <div><span class="label">PASO 4</span><h3>Seguimiento en vivo</h3></div>
+          <span id="rampProgressText" class="pill muted">0%</span>
+        </div>
+
+        <div class="ramp-live-values">
+          <div><span>Valor</span><b id="rampRunEng">—</b><small id="rampRunUnit"></small></div>
+          <div><span>Salida</span><b id="rampRunMa">—</b><small>mA</small></div>
+        </div>
+        <div class="progress"><i id="rampProgressFill"></i></div>
+        <div class="chart-wrap ramp-chart-wrap"><canvas id="rampChart"></canvas></div>
+        <div class="button-grid two execution-controls">
+          <button id="pauseRampBtn" class="btn">Ⅱ Pausar</button>
+          <button id="stopRampBtn" class="btn danger">■ Detener</button>
+        </div>
+        <p id="rampStatus" class="hint">Sin ejecución activa.</p>
+      </section>
     </article>
   </section>
 
@@ -385,8 +408,8 @@
   <button class="tab" data-tab="connect"><span class="tab-icon">⌁</span><small>Conexión</small></button>
 </nav>
 
-<footer>Simulink · Web Serial / HC-05 · <span id="version">v1.6.0</span></footer>
+<footer>Simulink · Web Serial / HC-05 · <span id="version">v1.7.0</span></footer>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js" defer></script>
-<script src="app.js?v=1.6.0" defer></script>
+<script src="app.js?v=1.7.0" defer></script>
 </body>
 </html>

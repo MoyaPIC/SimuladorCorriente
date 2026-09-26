@@ -1,6 +1,6 @@
-const CACHE='simulink-v1.9.0';
+const CACHE='simulink-v1.10.0';
 const CHART_JS='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js';
-const OFFLINE=['./index.html','./manifest.webmanifest','./icon.svg','./styles.css?v=1.9.0','./app.js?v=1.9.0'];
+const OFFLINE=['./index.html','./manifest.webmanifest','./icon.svg','./styles.css?v=1.10.0','./app.js?v=1.10.0'];
 
 self.addEventListener('install',event=>{
   event.waitUntil(

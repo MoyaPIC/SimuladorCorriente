@@ -10,6 +10,14 @@ const TYPES={
   custom:{name:'Personalizada',unit:'u',min:0,max:100}
 };
 const SPP_UUID="00001101-0000-1000-8000-00805f9b34fb";
+const PROFILE_TYPE_LABELS={
+  linear:'Lineal',
+  triangle:'Triangular',
+  steps:'Escalonada',
+  cycle:'Ciclo',
+  custom:'Multipunto',
+  unknown:'Tipo desconocido'
+};
 let serialReadBuffer="";
 let previewChart=null;
 let rampLiveChart=null;
@@ -53,7 +61,7 @@ function simulateCommand(line){
   if(line.startsWith('SET:OUTPUT:ON')){state.outputOpen=false;return 'OK';}
   if(line==='PROFILE:LIST'){
     const lines=[];
-    state.deviceProfiles.forEach((p,i)=>{if(p)lines.push(`PROFILE:${i+1}:COUNT=${p.count}:REP=${p.repeats}`);});
+    state.deviceProfiles.forEach((p,i)=>{if(p)lines.push(`PROFILE:${i+1}:COUNT=${p.count}:REP=${p.repeats}:TYPE=${p.type||'unknown'}`);});
     lines.push('OK');
     return lines;
   }
@@ -73,16 +81,31 @@ function handleLine(line){
     renderMain();
     return;
   }
-  const pm=line.match(/^PROFILE:(\d+):COUNT=(\d+):REP=(\d+)/);
+  const pm=line.match(/^PROFILE:(\d+):COUNT=(\d+):REP=(\d+)(?::TYPE=([a-z]+))?/);
   if(pm){
     const slot=Number(pm[1]);
-    if(slot>=1&&slot<=16)state.deviceProfiles[slot-1]={slot,count:Number(pm[2]),repeats:Number(pm[3])};
+    if(slot>=1&&slot<=16){
+      state.deviceProfiles[slot-1]={
+        slot,
+        count:Number(pm[2]),
+        repeats:Number(pm[3]),
+        type:pm[4]||'unknown'
+      };
+    }
     renderDeviceProfiles();
+    return;
+  }
+  if(line==='ERR:EEPROM_OFFLINE'&&state.awaitingProfileList){
+    state.awaitingProfileList=false;
+    const mem=$('connectionMemorySummary');
+    if(mem)mem.innerHTML='<b>EEPROM 24C512 no detectada</b><br>No fue posible leer los ensayos almacenados.';
+    $('deviceMemoryStatus').innerHTML='<b>EEPROM 24C512 no detectada.</b>';
     return;
   }
   if(line==='OK'&&state.awaitingProfileList){
     state.awaitingProfileList=false;
     renderDeviceProfiles();
+    updateConnectionMemorySummary();
   }
 }
 function setSerialDiag(msg){const el=$('serialDiag');if(el)el.textContent='Diagnóstico: '+msg;}
@@ -129,6 +152,7 @@ async function connectSerial(){
 
     readLoop();
     await send('GET:STATUS');
+    await requestDeviceProfiles();
   }catch(e){
     log(e.message||String(e),'ERR');
     state.port=null;
@@ -478,6 +502,20 @@ function saveProfile(){
 function loadProfile(i){const p=state.profiles[i];if(!p)return;state.outScale=clone(p.scale||state.outScale);fillScaleInputs('out',state.outScale);setRampConfig(p.ramp);saveLocal();renderMain();document.querySelector('[data-tab="ramps"]').click();}
 function runProfile(i){loadProfile(i);runRamp();}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function profileTypeLabel(type){
+  return PROFILE_TYPE_LABELS[type]||PROFILE_TYPE_LABELS.unknown;
+}
+function updateConnectionMemorySummary(){
+  const el=$('connectionMemorySummary');
+  if(!el)return;
+  const occupied=state.deviceProfiles.filter(Boolean);
+  if(!occupied.length){
+    el.innerHTML='<b>EEPROM 24C512: 0/16 slots ocupados</b><br>No hay ensayos almacenados en el instrumento.';
+    return;
+  }
+  const details=occupied.map(p=>'Slot '+p.slot+': '+profileTypeLabel(p.type)).join(' · ');
+  el.innerHTML='<b>EEPROM 24C512: '+occupied.length+'/16 slots ocupados</b><br>'+escapeHtml(details);
+}
 function renderDeviceProfiles(){
   const box=$('deviceProfileList');if(!box)return;
   box.innerHTML='';
@@ -486,7 +524,7 @@ function renderDeviceProfiles(){
     const name=state.deviceSlotNames[slot]||(p?'Ensayo almacenado':'Vacío');
     const d=document.createElement('div');
     d.className='device-slot '+(p?'occupied':'empty');
-    d.innerHTML=`<div class="slot-number">SLOT <b>${slot}</b></div><div class="slot-info"><strong>${escapeHtml(name)}</strong><small>${p?`${p.count} puntos · ${p.repeats} rep.`:'Disponible para guardar un ensayo'}</small></div><div class="slot-actions">${p?`<button class="btn small primary" data-device-run="${slot}">▶ Ejecutar</button><button class="btn small danger" data-device-delete="${slot}">Borrar</button>`:'<span class="slot-empty-badge">Vacío</span>'}</div>`;
+    d.innerHTML=`<div class="slot-number">SLOT <b>${slot}</b></div><div class="slot-info"><strong>${escapeHtml(name)}</strong><small>${p?`${profileTypeLabel(p.type)} · ${p.count} puntos · ${p.repeats} rep.`:'Disponible para guardar un ensayo'}</small></div><div class="slot-actions">${p?`<button class="btn small primary" data-device-run="${slot}">▶ Ejecutar</button><button class="btn small danger" data-device-delete="${slot}">Borrar</button>`:'<span class="slot-empty-badge">Vacío</span>'}</div>`;
     box.appendChild(d);
   }
   const occupied=state.deviceProfiles.filter(Boolean).length;
@@ -497,6 +535,8 @@ async function requestDeviceProfiles(){
   state.deviceProfiles=Array(16).fill(null);
   state.awaitingProfileList=true;
   $('deviceMemoryStatus').textContent='Leyendo memoria del instrumento...';
+  const mem=$('connectionMemorySummary');
+  if(mem)mem.innerHTML='<b>EEPROM 24C512</b><br>Leyendo slots almacenados...';
   renderDeviceProfiles();
   await send('PROFILE:LIST');
 }
@@ -540,7 +580,8 @@ async function uploadProfile(p,num){
   const repeats=Math.max(1,Number(p.ramp?.repeats)||1);
   const progress=$('deviceUploadProgress'),fill=$('deviceUploadFill'),label=$('deviceUploadText');
   if(progress){progress.hidden=false;fill.style.width='0%';label.textContent='Preparando memoria...';}
-  if(!(await send(`PROFILE:NEW:${num}:${seq.length}:${repeats}`)))return false;
+  const profileType=(p.ramp&&p.ramp.type)||'unknown';
+  if(!(await send(`PROFILE:NEW:${num}:${seq.length}:${repeats}:${profileType}`)))return false;
   await sleep(40);
   for(let i=0;i<seq.length;i++){
     const ma=engToMa(seq[i],p.scale||state.outScale);
@@ -549,9 +590,9 @@ async function uploadProfile(p,num){
     await sleep(35);
   }
   if(!(await send(`PROFILE:SAVE:${num}`)))return false;
-  state.deviceProfiles[num-1]={slot:num,count:seq.length,repeats};
+  state.deviceProfiles[num-1]={slot:num,count:seq.length,repeats,type:profileType};
   state.deviceSlotNames[num]=p.name||`Ensayo slot ${num}`;
-  saveLocal();renderDeviceProfiles();
+  saveLocal();renderDeviceProfiles();updateConnectionMemorySummary();
   if(progress){fill.style.width='100%';label.textContent='Ensayo guardado en el instrumento.';}
   return true;
 }

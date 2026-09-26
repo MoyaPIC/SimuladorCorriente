@@ -575,3 +575,146 @@ button,input,select,textarea{font:inherit}.topbar{position:sticky;top:0;z-index:
     height:340px;
   }
 }
+
+
+/* ========================================================================== */
+/* Multipunto con área de trabajo horizontal contenida · v1.7.1              */
+/* ========================================================================== */
+
+/* Impide que cualquier elemento ancho del editor expanda la página completa. */
+#ramp-pane-custom{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  overflow:hidden;
+}
+
+.multipoint-scroll-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:14px;
+  margin:0 0 10px;
+  padding:0 2px;
+  color:var(--muted);
+}
+.multipoint-scroll-header span{
+  color:var(--text);
+  font-size:11px;
+  font-weight:850;
+}
+.multipoint-scroll-header small{
+  font-size:10px;
+  text-align:right;
+}
+
+/* Este es el único elemento que puede desplazarse lateralmente. */
+.horizontal-scroll-shell{
+  display:block;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  overflow-x:auto;
+  overflow-y:hidden;
+  overscroll-behavior-x:contain;
+  -webkit-overflow-scrolling:touch;
+  padding:2px 0 14px;
+  scrollbar-gutter:stable;
+  scrollbar-width:auto;
+}
+
+/* Barra horizontal visible y coherente con UconnectME. */
+.horizontal-scroll-shell::-webkit-scrollbar{
+  height:12px;
+}
+.horizontal-scroll-shell::-webkit-scrollbar-track{
+  background:var(--surface-alt);
+  border-radius:999px;
+}
+.horizontal-scroll-shell::-webkit-scrollbar-thumb{
+  background:color-mix(in srgb,var(--brand) 58%,var(--border));
+  border:3px solid var(--surface-alt);
+  border-radius:999px;
+}
+
+/* Ancho de trabajo estable: evita que botones, inputs y chart se deformen. */
+.horizontal-scroll-content{
+  width:1080px;
+  min-width:1080px;
+  max-width:1080px;
+  padding:0 2px 2px;
+}
+
+.horizontal-scroll-content .custom-points-block{
+  width:100%;
+  min-width:0;
+}
+
+/* Los grupos mantienen columnas cómodas dentro del lienzo horizontal. */
+.horizontal-scroll-content .custom-editor-toolbar{
+  grid-template-columns:repeat(3,minmax(240px,1fr));
+}
+.horizontal-scroll-content .custom-editor-settings,
+.horizontal-scroll-content .custom-selected-grid{
+  grid-template-columns:repeat(2,minmax(320px,1fr));
+}
+.horizontal-scroll-content .custom-curve-actions{
+  grid-template-columns:repeat(3,minmax(240px,1fr));
+}
+
+/* La gráfica queda estable y nunca empuja el shell exterior. */
+.horizontal-scroll-content .custom-editor-chart-wrap{
+  width:100%;
+  min-width:0;
+  height:430px;
+}
+
+.horizontal-scroll-content .custom-selected-panel,
+.horizontal-scroll-content .custom-point-list{
+  width:100%;
+  min-width:0;
+}
+
+/* En pantallas grandes dejamos crecer hasta el ancho disponible sin scroll
+   innecesario, siempre que entren los 1080 px del área de trabajo. */
+@media(min-width:1220px){
+  .horizontal-scroll-content{
+    width:100%;
+    min-width:100%;
+    max-width:none;
+  }
+}
+
+/* En móvil/tablet el scroll horizontal es intencional: no colapsamos columnas. */
+@media(max-width:1219px){
+  .multipoint-scroll-header{
+    align-items:flex-start;
+  }
+  .multipoint-scroll-header small{
+    max-width:250px;
+  }
+  .horizontal-scroll-content .custom-editor-toolbar,
+  .horizontal-scroll-content .custom-editor-settings,
+  .horizontal-scroll-content .custom-selected-grid,
+  .horizontal-scroll-content .custom-curve-actions{
+    grid-template-columns:inherit;
+  }
+}
+
+/* Restaura explícitamente las columnas porque reglas móviles antiguas usaban
+   !important sobre algunos grids. */
+@media(max-width:759px){
+  .horizontal-scroll-content .custom-editor-toolbar{
+    grid-template-columns:repeat(3,minmax(240px,1fr)) !important;
+  }
+  .horizontal-scroll-content .custom-editor-settings,
+  .horizontal-scroll-content .custom-selected-grid{
+    grid-template-columns:repeat(2,minmax(320px,1fr)) !important;
+  }
+  .horizontal-scroll-content .custom-curve-actions{
+    grid-template-columns:repeat(3,minmax(240px,1fr)) !important;
+  }
+  .horizontal-scroll-content .custom-editor-chart-wrap{
+    height:380px;
+  }
+}

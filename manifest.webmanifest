@@ -15,7 +15,7 @@
       "purpose": "any maskable"
     }
   ],
-  "orientation": "landscape",
+  "orientation": "landscape-primary",
   "display_override": [
     "fullscreen",
     "standalone"

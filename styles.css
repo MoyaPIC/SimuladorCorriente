@@ -399,3 +399,179 @@ button,input,select,textarea{font:inherit}.topbar{position:sticky;top:0;z-index:
     gap:3px;
   }
 }
+
+
+/* ========================================================================== */
+/* Rampas por etapas + corrección editor multipunto · v1.7.0                  */
+/* ========================================================================== */
+.ramp-workflow-card{
+  padding:20px;
+}
+.ramp-main-head{
+  margin-bottom:16px;
+}
+.ramp-main-head .card-subtitle{
+  max-width:520px;
+}
+.ramp-subtabs{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+  padding:6px;
+  margin-bottom:20px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:var(--surface-alt);
+}
+.ramp-subtab{
+  min-width:0;
+  min-height:54px;
+  border:0;
+  border-radius:10px;
+  background:transparent;
+  color:var(--muted);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  padding:9px 10px;
+  cursor:pointer;
+}
+.ramp-subtab span{
+  width:22px;
+  height:22px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  border:1px solid var(--border);
+  font-size:10px;
+  font-weight:850;
+}
+.ramp-subtab b{
+  font-size:11px;
+  white-space:nowrap;
+}
+.ramp-subtab.active{
+  background:var(--surface);
+  color:var(--brand);
+  box-shadow:0 4px 14px rgba(0,0,0,.08);
+}
+.ramp-subtab.active span{
+  background:var(--brand);
+  border-color:var(--brand);
+  color:#fff;
+}
+.ramp-subtab[hidden]{display:none!important}
+
+.ramp-pane{
+  display:none;
+  min-height:420px;
+}
+.ramp-pane.active{
+  display:block;
+}
+.ramp-pane-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  margin-bottom:18px;
+  padding-bottom:14px;
+  border-bottom:1px solid var(--border);
+}
+.ramp-pane-head h3{
+  margin:4px 0 0;
+  font-size:18px;
+}
+.ramp-pane-head>p{
+  max-width:390px;
+  margin:0;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.55;
+}
+.ramp-parameter-grid{
+  margin-top:18px;
+}
+.ramp-pane-footer{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:20px;
+  padding-top:16px;
+  border-top:1px solid var(--border);
+}
+.ramp-pane-footer .btn{
+  min-width:220px;
+}
+.preview-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-top:16px;
+}
+.run-pane-head{
+  align-items:center;
+}
+.execution-controls{
+  margin-top:16px;
+}
+
+/* Multipunto ocupa el espacio principal de su propia etapa. */
+.custom-points-block{
+  gap:16px;
+  padding:0;
+}
+.custom-editor-chart-wrap{
+  height:430px;
+  border-width:1px;
+}
+.custom-editor-toolbar{
+  margin-top:2px;
+}
+.custom-selected-panel{
+  margin-top:2px;
+}
+
+/* Indicación visual clara de que la gráfica está aceptando puntos. */
+#addPointBtn.active-add + *{}
+.custom-editor-chart-wrap:has(+ *){}
+.custom-points-block:has(#addPointBtn.active-add) .custom-editor-chart-wrap{
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--success) 45%,transparent);
+  cursor:crosshair;
+}
+
+@media(max-width:759px){
+  .ramp-workflow-card{padding:16px}
+  .ramp-subtabs{
+    display:flex;
+    overflow-x:auto;
+    justify-content:flex-start;
+    scrollbar-width:none;
+  }
+  .ramp-subtabs::-webkit-scrollbar{display:none}
+  .ramp-subtab{
+    flex:0 0 auto;
+    min-width:118px;
+  }
+  .ramp-pane{min-height:0}
+  .ramp-pane-head{
+    display:block;
+  }
+  .ramp-pane-head>p{
+    margin-top:8px;
+    max-width:none;
+  }
+  .ramp-pane-footer{
+    justify-content:stretch;
+  }
+  .ramp-pane-footer .btn{
+    width:100%;
+    min-width:0;
+  }
+  .preview-actions{
+    grid-template-columns:1fr;
+  }
+  .custom-editor-chart-wrap{
+    height:340px;
+  }
+}

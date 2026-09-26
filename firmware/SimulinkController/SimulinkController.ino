@@ -138,7 +138,7 @@ static const uint8_t EEPROM_ADDR  = 0x50;
 // ============================================================================
 // USB_BAUD se usa solo para monitor serie/diagnóstico.
 // BT_BAUD debe coincidir con la velocidad configurada en el HC-05.
-static const char FIRMWARE_VERSION[] = "1.0.4";
+static const char FIRMWARE_VERSION[] = "1.1.0";
 static const uint32_t USB_BAUD = 115200UL;
 static const uint32_t BT_BAUD  = 9600UL;
 
@@ -152,6 +152,8 @@ static const uint16_t LOOP_DEBOUNCE_MS = 30;
 static const uint32_t LOOP_ARM_TIME_MS = 5000UL;
 // Frecuencia máxima de actualización del DAC durante un perfil automático.
 static const uint16_t PROFILE_DAC_UPDATE_MS = 20;
+// Pitido corto que confirma una calibración almacenada correctamente.
+static const uint16_t CAL_CONFIRM_BEEP_MS = 90;
 
 // ============================================================================
 // 5. LÍMITES ELÉCTRICOS DE OPERACIÓN
@@ -189,6 +191,15 @@ static const uint16_t CONFIG_MAGIC  = 0xC55A;
 static const uint8_t  CONFIG_VER    = 1;
 static const uint16_t PROFILE_MAGIC = 0xA55A;
 static const uint8_t  PROFILE_VER   = 1;
+
+// El byte flags de la cabecera del perfil se usa para identificar el tipo
+// de curva. Los perfiles antiguos tienen 0 y se reportan como "unknown".
+static const uint8_t PROFILE_TYPE_UNKNOWN  = 0;
+static const uint8_t PROFILE_TYPE_LINEAR   = 1;
+static const uint8_t PROFILE_TYPE_TRIANGLE = 2;
+static const uint8_t PROFILE_TYPE_STEPS    = 3;
+static const uint8_t PROFILE_TYPE_CYCLE    = 4;
+static const uint8_t PROFILE_TYPE_CUSTOM   = 5;
 
 // ============================================================================
 // 7. OBJETOS DE COMUNICACIÓN
@@ -262,6 +273,8 @@ bool loopRawLast = false;
 bool loopAlarmArmed = false;
 uint32_t loopRawChangedMs = 0;
 uint32_t loopClosedSinceMs = 0;
+// Fin temporal del pitido corto de confirmación de calibración.
+uint32_t buzzerConfirmUntilMs = 0;
 
 // Marcas temporales utilizadas por las tareas cooperativas basadas en millis().
 uint32_t lastStatusMs = 0;
@@ -274,6 +287,7 @@ uint8_t uploadSlot = 0;
 uint16_t uploadExpected = 0;
 uint16_t uploadReceived = 0;
 uint16_t uploadRepeats = 1;
+uint8_t uploadType = PROFILE_TYPE_UNKNOWN;
 
 // Estado de ejecución autónoma.
 // Solo se mantienen en RAM dos puntos consecutivos para interpolar entre ellos.
@@ -353,14 +367,36 @@ static bool i2cProbe(uint8_t address) {
   return Wire.endTransmission() == 0;
 }
 
+// Convierte el texto recibido desde Simulink al código persistente del perfil.
+static uint8_t profileTypeFromText(const char *type) {
+  if (!type) return PROFILE_TYPE_UNKNOWN;
+  if (!strcmp(type, "linear")) return PROFILE_TYPE_LINEAR;
+  if (!strcmp(type, "triangle")) return PROFILE_TYPE_TRIANGLE;
+  if (!strcmp(type, "steps")) return PROFILE_TYPE_STEPS;
+  if (!strcmp(type, "cycle")) return PROFILE_TYPE_CYCLE;
+  if (!strcmp(type, "custom")) return PROFILE_TYPE_CUSTOM;
+  return PROFILE_TYPE_UNKNOWN;
+}
+
+// Devuelve el texto estable que la PWA utiliza para mostrar el tipo de curva.
+static const __FlashStringHelper *profileTypeToText(uint8_t type) {
+  switch (type) {
+    case PROFILE_TYPE_LINEAR:   return F("linear");
+    case PROFILE_TYPE_TRIANGLE: return F("triangle");
+    case PROFILE_TYPE_STEPS:    return F("steps");
+    case PROFILE_TYPE_CYCLE:    return F("cycle");
+    case PROFILE_TYPE_CUSTOM:   return F("custom");
+    default:                    return F("unknown");
+  }
+}
+
 // ============================================================================
-// 10. BUZZER ACTIVO - ALARMA EXCLUSIVA DE LAZO ABIERTO
+// 10. BUZZER ACTIVO - ALARMA DE LAZO + CONFIRMACIÓN DE CALIBRACIÓN
 // ============================================================================
 // IMPORTANTE:
-// El buzzer NO se usa como confirmación de arranque, guardado o perfil.
-// Solo se enciende cuando:
-//   1) la alarma ya fue armada tras >5 s de carga conectada, y
-//   2) D8 indica posteriormente que la carga se desconectó.
+// - La alarma de lazo tiene prioridad y mantiene el buzzer encendido.
+// - Una calibración guardada correctamente produce un único pitido corto.
+// - No se usa para arranque, guardado de perfiles ni otros comandos.
 // Aplica físicamente el estado del buzzer.
 // Para el hardware actual BUZZER_PASSIVE=false y se usa digitalWrite().
 static void buzzerSet(bool on) {
@@ -372,12 +408,20 @@ static void buzzerSet(bool on) {
   }
 }
 
-// Tarea de alarma.
-// No usa delay(), por lo que nunca bloquea Bluetooth, ADC ni perfiles.
+// Solicita un pitido breve sin usar delay().
+static void buzzerConfirmCalibration() {
+  buzzerConfirmUntilMs = millis() + CAL_CONFIRM_BEEP_MS;
+}
+
+// Tarea de buzzer no bloqueante.
+// La alarma de lazo tiene prioridad sobre cualquier confirmación.
 static void buzzerTask() {
-  // Una vez armada la supervisión, un lazo abierto mantiene el buzzer activo.
-  // Si todavía no se armó o la carga está conectada, permanece apagado.
-  buzzerSet(loopAlarmArmed && loopOpen);
+  uint32_t now = millis();
+  if (loopAlarmArmed && loopOpen) {
+    buzzerSet(true);
+    return;
+  }
+  buzzerSet((int32_t)(buzzerConfirmUntilMs - now) > 0);
 }
 
 // ============================================================================
@@ -1004,7 +1048,7 @@ static bool calibrateOutputFromMeasured(float measuredAt4,
 
   cal.dacCode4 = (uint16_t)newCode4;
   cal.dacCode20 = (uint16_t)newCode20;
-  saveCalibration();
+  if (!saveCalibration()) return false;
   applyCurrentSetpoint(outputSetpointMa);
   return true;
 }
@@ -1036,8 +1080,7 @@ static bool calibrateInputFromDisplayed(float displayedAtReal4,
 
   cal.adcRaw4 = (int16_t)r4;
   cal.adcRaw20 = (int16_t)r20;
-  saveCalibration();
-  return true;
+  return saveCalibration();
 }
 
 // ============================================================================
@@ -1054,12 +1097,14 @@ static void handleProfileCommand(Stream &src, char *savePtr) {
     return;
   }
 
-  // PROFILE:NEW:<slot>:<count>[:<repeats>]
-  // Inicia una transferencia e invalida primero la cabecera anterior.
+  // PROFILE:NEW:<slot>:<count>[:<repeats>[:<type>]]
+  // El tipo se guarda en la cabecera para poder identificar la curva tras
+  // apagar/reconectar el instrumento.
   if (!strcmp(op, "NEW")) {
     char *slotS = strtok_r(NULL, ":", &savePtr);
     char *countS = strtok_r(NULL, ":", &savePtr);
     char *repeatS = strtok_r(NULL, ":", &savePtr);
+    char *typeS = strtok_r(NULL, ":", &savePtr);
 
     if (!slotS || !countS) {
       replyError(src, F("PROFILE_NEW_ARGS"));
@@ -1069,6 +1114,7 @@ static void handleProfileCommand(Stream &src, char *savePtr) {
     uint8_t slot = (uint8_t)atoi(slotS);
     uint16_t count = (uint16_t)atoi(countS);
     uint16_t repeats = repeatS ? (uint16_t)atoi(repeatS) : 1;
+    uint8_t profileType = profileTypeFromText(typeS);
 
     if (!has24c512) {
       replyError(src, F("EEPROM_OFFLINE"));
@@ -1093,6 +1139,7 @@ static void handleProfileCommand(Stream &src, char *savePtr) {
     uploadExpected = count;
     uploadReceived = 0;
     uploadRepeats = repeats;
+    uploadType = profileType;
 
     if (&src != &btSerial) replyOK(src);
     return;
@@ -1183,6 +1230,7 @@ static void handleProfileCommand(Stream &src, char *savePtr) {
     memset(&h, 0, sizeof(h));
     h.magic = PROFILE_MAGIC;
     h.version = PROFILE_VER;
+    h.flags = uploadType;
     h.pointCount = uploadExpected;
     h.repeats = uploadRepeats;
     h.crc = crc;
@@ -1258,6 +1306,11 @@ static void handleProfileCommand(Stream &src, char *savePtr) {
   // PROFILE:LIST
   // Enumera cabeceras plausibles. La validación CRC completa se realiza al RUN.
   if (!strcmp(op, "LIST")) {
+    if (!has24c512) {
+      replyError(src, F("EEPROM_OFFLINE"));
+      return;
+    }
+
     for (uint8_t slot = 1; slot <= PROFILE_SLOT_COUNT; slot++) {
       ProfileHeader h;
       if (profileReadHeader(slot, h) &&
@@ -1270,7 +1323,9 @@ static void handleProfileCommand(Stream &src, char *savePtr) {
         src.print(F(":COUNT="));
         src.print(h.pointCount);
         src.print(F(":REP="));
-        src.println(h.repeats);
+        src.print(h.repeats);
+        src.print(F(":TYPE="));
+        src.println(profileTypeToText(h.flags));
       }
     }
     replyOK(src);
@@ -1322,6 +1377,7 @@ static void handleCalibrationCommand(Stream &src, char *savePtr) {
         return;
       }
 
+      buzzerConfirmCalibration();
       replyOK(src);
       return;
     }
@@ -1343,8 +1399,12 @@ static void handleCalibrationCommand(Stream &src, char *savePtr) {
 
       cal.dacCode4 = (uint16_t)c4;
       cal.dacCode20 = (uint16_t)c20;
-      saveCalibration();
+      if (!saveCalibration()) {
+        replyError(src, F("EEPROM_WRITE"));
+        return;
+      }
       applyCurrentSetpoint(outputSetpointMa);
+      buzzerConfirmCalibration();
       replyOK(src);
       return;
     }
@@ -1364,6 +1424,7 @@ static void handleCalibrationCommand(Stream &src, char *savePtr) {
         return;
       }
 
+      buzzerConfirmCalibration();
       replyOK(src);
       return;
     }
@@ -1387,7 +1448,11 @@ static void handleCalibrationCommand(Stream &src, char *savePtr) {
 
       cal.adcRaw4 = (int16_t)r4;
       cal.adcRaw20 = (int16_t)r20;
-      saveCalibration();
+      if (!saveCalibration()) {
+        replyError(src, F("EEPROM_WRITE"));
+        return;
+      }
+      buzzerConfirmCalibration();
       replyOK(src);
       return;
     }
@@ -1412,7 +1477,11 @@ static void handleCalibrationCommand(Stream &src, char *savePtr) {
         return;
       }
 
-      saveCalibration();
+      if (!saveCalibration()) {
+        replyError(src, F("EEPROM_WRITE"));
+        return;
+      }
+      buzzerConfirmCalibration();
       replyOK(src);
       return;
     }
@@ -1657,7 +1726,7 @@ void loop() {
   // 4) Generación autónoma si hay un perfil ejecutándose.
   profileTask();
 
-  // 5) El buzzer refleja exclusivamente una desconexión de carga armada.
+  // 5) Buzzer: alarma de lazo o confirmación breve de calibración.
   buzzerTask();
 
   // 6) Telemetría periódica hacia Simulink y monitor serie.

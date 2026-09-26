@@ -718,3 +718,370 @@ button,input,select,textarea{font:inherit}.topbar{position:sticky;top:0;z-index:
     height:380px;
   }
 }
+
+
+/* ========================================================================== */
+/* Diseño principal horizontal / landscape-first · v1.8.0                    */
+/* ========================================================================== */
+
+:root{
+  --topbar-h:78px;
+  --side-nav-w:104px;
+}
+
+/* La aplicación de escritorio y horizontal utiliza casi todo el viewport. */
+body{
+  min-width:0;
+}
+
+.topbar{
+  min-height:var(--topbar-h);
+  padding-left:22px;
+  padding-right:22px;
+}
+
+.shell{
+  width:100%;
+  max-width:none;
+}
+
+/* Navegación lateral tipo instrumento de PC. */
+@media (min-width:760px), (orientation:landscape){
+  body{
+    padding-bottom:0;
+  }
+
+  .bottom-tabs{
+    position:fixed;
+    top:var(--topbar-h);
+    left:0;
+    right:auto;
+    bottom:0;
+    transform:none;
+    width:var(--side-nav-w);
+    height:auto;
+    padding:12px 9px max(12px,env(safe-area-inset-bottom));
+    border:0;
+    border-right:1px solid var(--border);
+    border-top:0;
+    border-radius:0;
+    background:color-mix(in srgb,var(--surface) 97%,transparent);
+    display:flex;
+    flex-direction:column;
+    gap:7px;
+    overflow-y:auto;
+    overflow-x:hidden;
+    box-shadow:8px 0 26px rgba(0,0,0,.08);
+  }
+
+  .bottom-tabs .tab{
+    flex:0 0 auto;
+    width:100%;
+    min-height:64px;
+    padding:8px 5px;
+    border-radius:12px;
+    gap:5px;
+  }
+
+  .bottom-tabs .tab-icon{
+    font-size:20px;
+  }
+
+  .bottom-tabs .tab small{
+    font-size:10px;
+  }
+
+  .shell{
+    margin:0;
+    margin-left:var(--side-nav-w);
+    width:calc(100% - var(--side-nav-w));
+    max-width:none;
+    padding:20px 24px 34px;
+  }
+
+  .panel{
+    width:100%;
+    max-width:none;
+  }
+
+  .card{
+    width:100%;
+    max-width:none;
+    padding:22px 24px;
+  }
+
+  /* Mantiene el aspecto de PC aprovechando el ancho en lugar de apilar. */
+  .form-grid,
+  .ramp-field-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  }
+
+  .button-grid.two{
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  }
+
+  .button-grid.three{
+    grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+  }
+
+  .metrics{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  .stats{
+    grid-template-columns:repeat(4,minmax(0,1fr));
+  }
+
+  /* Salida: controles anchos como instrumento de escritorio. */
+  #tab-output .output-card{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(420px,.9fr);
+    grid-template-areas:
+      "head head"
+      "range control"
+      "metrics control";
+    column-gap:26px;
+    align-items:start;
+  }
+
+  #tab-output .card-head{grid-area:head}
+  #tab-output .range-badge{grid-area:range;margin-top:2px}
+  #tab-output .metrics{grid-area:metrics;margin-top:16px}
+  #tab-output .control-block{grid-area:control;margin-top:0}
+
+  /* Entrada: datos a la izquierda, histórico ocupando el ancho principal. */
+  #tab-input .card{
+    display:grid;
+    grid-template-columns:minmax(320px,.72fr) minmax(520px,1.28fr);
+    grid-template-areas:
+      "head head"
+      "metrics charthead"
+      "stats chart"
+      "actions chart"
+      "summary chart";
+    column-gap:24px;
+    align-items:start;
+  }
+
+  #tab-input .card-head{grid-area:head}
+  #tab-input .metrics{grid-area:metrics}
+  #tab-input .stats{grid-area:stats;grid-template-columns:repeat(2,minmax(0,1fr))}
+  #tab-input .button-grid{grid-area:actions}
+  #tab-input .chart-section-head{grid-area:charthead;margin-top:0}
+  #tab-input .input-chart-wrap{grid-area:chart;height:430px;margin-bottom:0}
+  #tab-input .summary{grid-area:summary;margin-top:14px}
+
+  /* Calibración y conexión permanecen claramente horizontales. */
+  #tab-calibration{
+    display:none;
+  }
+  #tab-calibration.active{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:20px;
+    align-items:start;
+  }
+
+  #tab-connect .card:first-child .form-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  }
+
+  /* Ensayos: biblioteca + memoria aprovechan ancho tipo PC. */
+  #tab-profiles.active{
+    display:grid;
+    grid-template-columns:minmax(320px,.72fr) minmax(480px,1.28fr);
+    gap:20px;
+    align-items:start;
+  }
+
+  #tab-profiles > .card:first-child{
+    grid-row:1 / span 2;
+  }
+
+  #tab-profiles .device-memory-card{
+    grid-column:2;
+  }
+
+  /* Rampas utiliza todo el espacio disponible. */
+  .ramp-workflow-card{
+    width:100%;
+  }
+
+  .ramp-subtabs{
+    grid-template-columns:repeat(4,minmax(130px,1fr));
+  }
+
+  .ramp-pane{
+    min-height:0;
+  }
+
+  .ramp-type-grid{
+    grid-template-columns:repeat(5,minmax(0,1fr));
+  }
+
+  .ramp-type-btn.wide-choice{
+    grid-column:auto;
+  }
+
+  .preview-chart-wrap{
+    height:430px;
+  }
+
+  .ramp-chart-wrap{
+    height:460px;
+  }
+
+  .custom-editor-chart-wrap{
+    height:460px;
+  }
+
+  /* En horizontal normal ya no forzamos 1080px si hay ancho suficiente. */
+  .horizontal-scroll-content{
+    width:max(100%,1080px);
+    min-width:1080px;
+    max-width:none;
+  }
+}
+
+/* Tablets/teléfonos en horizontal: mantenemos estilo PC aunque la altura sea baja. */
+@media (orientation:landscape) and (max-width:1199px){
+  :root{
+    --topbar-h:66px;
+    --side-nav-w:92px;
+  }
+
+  .topbar{
+    min-height:var(--topbar-h);
+    padding:8px 14px;
+  }
+
+  .topbar h1{
+    font-size:20px;
+  }
+
+  .shell{
+    padding:14px 14px 24px;
+  }
+
+  .card{
+    padding:16px 18px;
+    margin-bottom:14px;
+  }
+
+  .bottom-tabs{
+    padding:9px 7px;
+  }
+
+  .bottom-tabs .tab{
+    min-height:56px;
+  }
+
+  #tab-output .output-card{
+    grid-template-columns:minmax(0,1fr) minmax(340px,.92fr);
+    column-gap:16px;
+  }
+
+  #tab-input .card{
+    grid-template-columns:minmax(270px,.72fr) minmax(430px,1.28fr);
+    column-gap:16px;
+  }
+
+  #tab-input .input-chart-wrap{
+    height:330px;
+  }
+
+  #tab-calibration.active{
+    gap:14px;
+  }
+
+  #tab-profiles.active{
+    gap:14px;
+  }
+
+  .ramp-subtabs{
+    display:grid;
+    overflow:visible;
+    grid-template-columns:repeat(4,minmax(110px,1fr));
+  }
+
+  .ramp-subtab{
+    min-width:0;
+  }
+
+  .preview-chart-wrap,
+  .ramp-chart-wrap{
+    height:340px;
+  }
+
+  .custom-editor-chart-wrap{
+    height:360px;
+  }
+}
+
+/* Portrait en teléfono/tablet: solicitamos rotación y no deformamos el instrumento. */
+.portrait-orientation-lock{
+  display:none;
+}
+
+@media (orientation:portrait) and (max-width:900px){
+  .portrait-orientation-lock{
+    position:fixed;
+    inset:0;
+    z-index:9999;
+    display:grid;
+    place-items:center;
+    padding:28px;
+    background:var(--bg);
+    color:var(--text);
+  }
+
+  .portrait-orientation-card{
+    width:min(100%,440px);
+    padding:30px 26px;
+    text-align:center;
+    border:1px solid var(--border);
+    border-top:4px solid var(--brand);
+    border-radius:20px;
+    background:var(--surface);
+    box-shadow:var(--shadow);
+  }
+
+  .portrait-orientation-card h2{
+    margin:9px 0 10px;
+    font-size:24px;
+  }
+
+  .portrait-orientation-card p{
+    margin:0;
+    color:var(--muted);
+    line-height:1.6;
+    font-size:13px;
+  }
+
+  .rotate-device-icon{
+    width:74px;
+    height:74px;
+    margin:0 auto 18px;
+    display:grid;
+    place-items:center;
+    border-radius:20px;
+    background:var(--brand-soft);
+    color:var(--brand);
+    font-size:42px;
+    font-weight:900;
+    transform:rotate(90deg);
+  }
+}
+
+/* PC grande: un ancho máximo visual evita tarjetas exageradamente largas. */
+@media (min-width:1500px){
+  .shell{
+    padding-left:32px;
+    padding-right:32px;
+  }
+
+  .panel{
+    max-width:1500px;
+    margin:0 auto;
+  }
+}

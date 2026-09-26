@@ -3,9 +3,9 @@
   "short_name": "Simulink",
   "start_url": "./",
   "scope": "./",
-  "display": "standalone",
-  "background_color": "#f5f6f8",
-  "theme_color": "#c9252d",
+  "display": "fullscreen",
+  "background_color": "#101114",
+  "theme_color": "#101114",
   "description": "Simulador y medidor 4-20 mA de UconnectME Instrumentación con Web Serial para HC-05",
   "icons": [
     {
@@ -17,7 +17,7 @@
   ],
   "orientation": "landscape",
   "display_override": [
-    "standalone",
-    "window-controls-overlay"
+    "fullscreen",
+    "standalone"
   ]
 }

@@ -7,14 +7,14 @@
   <meta name="description" content="Simulink - simulación y medición 4-20 mA mediante Web Serial y HC-05">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.5.2">
+  <link rel="stylesheet" href="styles.css?v=1.6.0">
   <title>Simulink · 4–20 mA</title>
 </head>
 <body>
 <header class="topbar">
   <div>
     <div class="eyebrow">UconnectME · Instrumentación</div>
-    <h1>Simulink <small style="font-size:11px;opacity:.65">v1.5.2</small></h1>
+    <h1>Simulink <small style="font-size:11px;opacity:.65">v1.6.0</small></h1>
   </div>
   <div class="top-actions">
     <span id="supportPill" class="pill">Web Serial</span>
@@ -161,13 +161,66 @@
       </div>
 
       <div id="customPointsCard" class="config-step custom-points-block" hidden>
-        <div class="step-heading">
+        <div class="step-heading custom-heading">
           <span class="step-number">•</span>
-          <div><b>Puntos personalizados</b><small>Cada punto define tiempo y valor de ingeniería.</small></div>
-          <button id="addPointBtn" class="btn small" type="button">+ Punto</button>
+          <div>
+            <b>Constructor multipunto</b>
+            <small>Activá “Agregar punto” y tocá la gráfica para construir la curva desde el origen.</small>
+          </div>
         </div>
-        <div class="table-wrap">
-          <table><thead><tr><th>#</th><th>Tiempo s</th><th>Valor</th><th></th></tr></thead><tbody id="pointsBody"></tbody></table>
+
+        <div class="custom-editor-toolbar">
+          <button id="addPointBtn" class="btn primary" type="button">＋ Agregar punto</button>
+          <button id="deletePointBtn" class="btn danger" type="button" disabled>Eliminar seleccionado</button>
+          <button id="clearPointsBtn" class="btn" type="button">Limpiar curva</button>
+        </div>
+
+        <div id="customEditorHint" class="custom-editor-hint">
+          Origen fijo: t = 0 s. Activá “Agregar punto” y luego tocá cualquier lugar dentro de la gráfica.
+        </div>
+
+        <div class="custom-editor-settings">
+          <label>Ventana de tiempo
+            <div class="field-with-unit"><input id="customTimeMax" type="number" min="1" max="3600" step="1" value="60"><small>s</small></div>
+          </label>
+          <label>Ajuste temporal
+            <select id="customTimeSnap">
+              <option value="0.1">0.1 s</option>
+              <option value="0.5" selected>0.5 s</option>
+              <option value="1">1 s</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="chart-wrap custom-editor-chart-wrap">
+          <canvas id="customCurveChart"></canvas>
+        </div>
+
+        <div class="custom-selected-panel">
+          <div class="custom-selected-title">
+            <div><span class="label">PUNTO SELECCIONADO</span><b id="customSelectedLabel">Origen</b></div>
+            <span id="customPointCount" class="pill muted">1 punto</span>
+          </div>
+          <div class="custom-selected-grid">
+            <label>Tiempo
+              <div class="field-with-unit"><input id="customPointTime" type="number" min="0" step="0.1" value="0"><small>s</small></div>
+            </label>
+            <label>Valor
+              <div class="field-with-unit"><input id="customPointValue" type="number" step="0.1" value="0"><small id="customPointUnit"></small></div>
+            </label>
+          </div>
+          <button id="applyCustomPointBtn" class="btn wide" type="button">Aplicar cambios al punto</button>
+        </div>
+
+        <div>
+          <div class="custom-point-list-title"><b>Puntos de la curva</b><small>También podés seleccionar un punto desde esta lista.</small></div>
+          <div id="customPointList" class="custom-point-list"></div>
+        </div>
+
+        <div class="custom-curve-actions">
+          <button id="simulateCustomBtn" class="btn primary" type="button">▶ Simular curva</button>
+          <button id="saveCustomProfileBtn" class="btn" type="button">Guardar como ensayo</button>
+          <button id="sendCustomDeviceBtn" class="btn" type="button">Guardar en equipo</button>
         </div>
       </div>
 
@@ -332,8 +385,8 @@
   <button class="tab" data-tab="connect"><span class="tab-icon">⌁</span><small>Conexión</small></button>
 </nav>
 
-<footer>Simulink · Web Serial / HC-05 · <span id="version">v1.5.2</span></footer>
+<footer>Simulink · Web Serial / HC-05 · <span id="version">v1.6.0</span></footer>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js" defer></script>
-<script src="app.js?v=1.5.2" defer></script>
+<script src="app.js?v=1.6.0" defer></script>
 </body>
 </html>

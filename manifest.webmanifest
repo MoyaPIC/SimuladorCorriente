@@ -1,11 +1,23 @@
 {
-  "name":"Simulink · UconnectME Instrumentación",
-  "short_name":"Simulink",
-  "start_url":"./",
-  "scope":"./",
-  "display":"standalone",
-  "background_color":"#f5f6f8",
-  "theme_color":"#c9252d",
-  "description":"Simulador y medidor 4-20 mA de UconnectME Instrumentación con Web Serial para HC-05",
-  "icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+  "name": "Simulink · UconnectME Instrumentación",
+  "short_name": "Simulink",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#c9252d",
+  "description": "Simulador y medidor 4-20 mA de UconnectME Instrumentación con Web Serial para HC-05",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "orientation": "landscape",
+  "display_override": [
+    "standalone",
+    "window-controls-overlay"
+  ]
 }

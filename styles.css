@@ -125,3 +125,46 @@ button,input,select,textarea{font:inherit}.topbar{position:sticky;top:0;z-index:
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
 }
+
+
+/* ========================================================================== */
+/* Gráficas Chart.js · v1.5.0                                                 */
+/* ========================================================================== */
+.chart-wrap{
+  position:relative;
+  overflow:hidden;
+  padding:10px 8px 4px;
+}
+.chart-wrap canvas{
+  display:block;
+  width:100% !important;
+  height:100% !important;
+}
+.chart-section-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  margin:22px 2px 10px;
+}
+.chart-section-head h3{
+  margin:4px 0 0;
+  font-size:14px;
+}
+.chart-hint{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+  border:1px solid var(--border);
+  background:var(--surface-alt);
+  padding:6px 9px;
+  border-radius:999px;
+}
+.input-chart-wrap{height:300px;margin-bottom:16px}
+.preview-chart-wrap{height:300px}
+.ramp-chart-wrap{height:360px}
+@media(max-width:759px){
+  .input-chart-wrap{height:275px}
+  .preview-chart-wrap{height:275px}
+  .ramp-chart-wrap{height:320px}
+}

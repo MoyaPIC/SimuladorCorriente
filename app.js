@@ -452,6 +452,41 @@ function ensureCustomOrigin(){
   state.points=clean;
   state.customSelectedIndex=clamp(Number(state.customSelectedIndex)||0,0,state.points.length-1);
 }
+function addNextCustomPoint(){
+  ensureCustomOrigin();
+  const last=state.points[state.points.length-1];
+  const snap=customTimeSnap();
+  const duration=Math.max(snap,Number($('customNextDuration').value)||5);
+  const {lo,hi}=customScaleBounds();
+  const value=clamp(Number($('customNextValue').value),lo,hi);
+  const t=snapNumber(last.t+duration,snap);
+
+  state.points.push({t,v:value});
+  state.customSelectedIndex=state.points.length-1;
+
+  if($('customTimeMax')&&t>Number($('customTimeMax').value)*.85){
+    $('customTimeMax').value=Math.min(3600,Math.max(Math.ceil(t*1.25),Math.ceil(t+5)));
+  }
+
+  renderCustomEditor();
+}
+
+function syncNextPointControls(){
+  const value=$('customNextValue');
+  const slider=$('customNextValueSlider');
+  if(!value||!slider)return;
+  const {lo,hi}=customScaleBounds();
+  slider.min=lo;
+  slider.max=hi;
+  slider.step=Math.max(.01,(hi-lo)/1000);
+  value.min=lo;
+  value.max=hi;
+  $('customNextUnit').textContent=state.outScale.unit||'';
+  if(!Number.isFinite(Number(value.value)))value.value=fmt((lo+hi)/2,2);
+  value.value=clamp(Number(value.value),lo,hi);
+  slider.value=value.value;
+}
+
 function updateCustomAddModeUI(){
   const btn=$('addPointBtn'),hint=$('customEditorHint');
   if(!btn||!hint)return;
@@ -541,6 +576,7 @@ function drawCustomCurveChart(){
 }
 function renderCustomEditor(){
   ensureCustomOrigin();
+  syncNextPointControls();
   const maxPoint=Math.max(0,...state.points.map(p=>Number(p.t)||0));
   if($('customTimeMax')&&Number($('customTimeMax').value)<maxPoint)$('customTimeMax').value=Math.ceil(maxPoint);
   renderCustomPointPanel();
@@ -901,11 +937,20 @@ function renderProfiles(){
   });
 }
 function escapeHtml(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+function currentRampProfile(){
+  const name=$('profileName')?.value.trim()||('Ensayo '+(state.profiles.length+1));
+  const desc=$('profileDesc')?.value.trim()||'';
+  return{name,desc,scale:clone(state.outScale),ramp:getRampConfig(),savedAt:new Date().toISOString()};
+}
 function saveProfile(){
-  const name=$('profileName').value.trim()||`Ensayo ${state.profiles.length+1}`;
-  state.profiles.push({name,desc:$('profileDesc').value.trim(),scale:clone(state.outScale),ramp:getRampConfig(),savedAt:new Date().toISOString()});
-  saveLocal();renderProfiles();
-  $('profileName').value='';$('profileDesc').value='';
+  const p=currentRampProfile();
+  state.profiles.push(p);
+  saveLocal();
+  renderProfiles();
+  if($('rampSaveStatus'))$('rampSaveStatus').textContent='Guardado en biblioteca.';
+  if($('profileName'))$('profileName').value='';
+  if($('profileDesc'))$('profileDesc').value='';
+  return p;
 }
 function loadProfile(i){const p=state.profiles[i];if(!p)return;state.outScale=clone(p.scale||state.outScale);fillScaleInputs('out',state.outScale);setRampConfig(p.ramp);saveLocal();renderMain();document.querySelector('[data-tab="ramps"]').click();}
 function runProfile(i){loadProfile(i);runRamp();}
@@ -1008,7 +1053,6 @@ async function deleteDeviceProfile(slot){
   saveLocal();renderDeviceProfiles();
 }
 function download(name,text,type='text/plain'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
-function exportProfiles(){download('Simulink-perfiles.json',JSON.stringify(state.profiles,null,2),'application/json');}
 function exportCsv(){const rows=['timestamp,salida_mA,entrada_mA,salida_valor,salida_unidad,entrada_valor,entrada_unidad'];state.chart.forEach(p=>rows.push(`${new Date(p.t).toISOString()},${p.out.toFixed(3)},${p.inp.toFixed(3)},${maToEng(p.out,state.outScale).toFixed(3)},${state.outScale.unit},${maToEng(p.inp,state.inScale).toFixed(3)},${state.inScale.unit}`));download('Simulink-datos.csv',rows.join('\n'),'text/csv');}
 function drawChart(){
   if(!$('tab-input').classList.contains('active')||!chartReady())return;
@@ -1054,6 +1098,22 @@ function drawChart(){
   }
 }
 
+function bindSectionSubtabs(){
+  document.querySelectorAll('.section-subtab').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const group=btn.dataset.subtabGroup;
+      const pane=btn.dataset.subtabPane;
+      document.querySelectorAll('.section-subtab[data-subtab-group="'+group+'"]').forEach(x=>{
+        x.classList.toggle('active',x===btn);
+      });
+      document.querySelectorAll('.section-subpane[data-subpane-group="'+group+'"]').forEach(x=>{
+        x.classList.toggle('active',x.dataset.subpane===pane);
+      });
+      if(group==='profiles'&&pane==='memory')renderDeviceProfiles();
+    });
+  });
+}
+
 function bindTabs(){
   document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -1071,7 +1131,8 @@ function bindTabs(){
 }
 function bind(){
   bindTabs();
-  bindRampTabs();$('connectBtn').onclick=connectSerial;$('disconnectBtn').onclick=disconnectSerial;$('startSimulationBtn').onclick=startSimulation;$('transportMode').onchange=()=>{if($('transportMode').value==='serial'){stopSimulation();state.connected=false;$('connectBtn').disabled=false;$('disconnectBtn').disabled=true;$('supportPill').textContent='Web Serial';$('supportPill').className='pill';$('modeStatus').textContent='Web Serial seleccionado. Vinculá el HC-05 en Android y luego presioná Conectar.';setSerialDiag('esperando selección del puerto.');}else{$('modeStatus').textContent='Modo simulación listo para usar sin hardware.';}};
+  bindRampTabs();
+  bindSectionSubtabs();$('connectBtn').onclick=connectSerial;$('disconnectBtn').onclick=disconnectSerial;$('startSimulationBtn').onclick=startSimulation;$('transportMode').onchange=()=>{if($('transportMode').value==='serial'){stopSimulation();state.connected=false;$('connectBtn').disabled=false;$('disconnectBtn').disabled=true;$('supportPill').textContent='Web Serial';$('supportPill').className='pill';$('modeStatus').textContent='Web Serial seleccionado. Vinculá el HC-05 en Android y luego presioná Conectar.';setSerialDiag('esperando selección del puerto.');}else{$('modeStatus').textContent='Modo simulación listo para usar sin hardware.';}};
   $('manualSlider').oninput=e=>{const v=clamp(Number(e.target.value),4,20);$('manualCurrent').value=v.toFixed(1);state.outputMa=v;renderMain();};$('manualSlider').onchange=e=>applyOutput(Number(e.target.value));$('manualCurrent').onchange=e=>applyOutput(Math.round(clamp(Number(e.target.value),4,20)*10)/10);$('minusBtn').onclick=()=>applyOutput(Math.round(clamp(state.outputMa-.1,4,20)*10)/10);$('plusBtn').onclick=()=>applyOutput(Math.round(clamp(state.outputMa+.1,4,20)*10)/10);$('applyCurrentBtn').onclick=()=>applyOutput(Math.round(clamp(Number($('manualCurrent').value),4,20)*10)/10);
   $('outputEnabled').onchange=async e=>send(e.target.checked?'SET:OUTPUT:ON':'SET:OUTPUT:OFF');
   $('resetStatsBtn').onclick=()=>{state.samples=[];renderMain();};document.querySelectorAll('.ramp-type-btn').forEach(b=>b.onclick=()=>{
@@ -1083,32 +1144,28 @@ function bind(){
   $('customPreviewBtn').onclick=()=>setRampPane('preview');
   $('previewSimulateBtn').onclick=()=>runRamp(true);
   $('runRampBtn').onclick=()=>runRamp(false);$('pauseRampBtn').onclick=()=>{state.rampPaused=!state.rampPaused;$('pauseRampBtn').textContent=state.rampPaused?'▶ Continuar':'Ⅱ Pausar';$('rampStatus').textContent=state.rampPaused?'Rampa pausada.':'Rampa ejecutándose…';};$('stopRampBtn').onclick=stopRamp;
-  $('addPointBtn').onclick=()=>{state.customAddMode=!state.customAddMode;updateCustomAddModeUI();};
+  $('addNextPointBtn').onclick=addNextCustomPoint;
+  $('customNextValue').oninput=e=>{$('customNextValueSlider').value=e.target.value;};
+  $('customNextValueSlider').oninput=e=>{$('customNextValue').value=e.target.value;};
   $('deletePointBtn').onclick=deleteSelectedCustomPoint;
   $('clearPointsBtn').onclick=()=>{if(state.points.length<=1||confirm('¿Limpiar todos los puntos de la curva multipunto?'))clearCustomCurve();};
   $('applyCustomPointBtn').onclick=applySelectedCustomPoint;
-  $('customTimeMax').onchange=()=>{
-    const maxPoint=Math.max(1,...state.points.map(p=>Number(p.t)||0));
-    if(Number($('customTimeMax').value)<maxPoint)$('customTimeMax').value=Math.ceil(maxPoint);
-    syncCustomWorkspaceWidth();
-    drawCustomCurveChart();
-    autoFollowCustomPoint(false);
-  };
-  $('customTimeSnap').onchange=()=>renderCustomEditor();
   $('customPointList').onclick=e=>{
     const b=e.target.closest('[data-custom-select]');if(!b)return;
     state.customSelectedIndex=Number(b.dataset.customSelect);
     renderCustomEditor();
-    autoFollowCustomPoint(true);
   };
-  $('customCurveChart').addEventListener('pointerdown',handleCustomPointerDown);
-  $('customCurveChart').addEventListener('pointermove',handleCustomPointerMove);
-  $('customCurveChart').addEventListener('pointerup',handleCustomPointerUp);
-  $('customCurveChart').addEventListener('pointercancel',handleCustomPointerUp);
-  $('simulateCustomBtn').onclick=()=>{if(state.points.length<2){alert('Agregá al menos un punto además del origen.');return;}runRamp(true);};
-  $('saveCustomProfileBtn').onclick=()=>{if(state.points.length<2){alert('Agregá al menos un punto además del origen.');return;}saveCurrentCustomProfile();};
-  $('sendCustomDeviceBtn').onclick=()=>{if(state.points.length<2){alert('Agregá al menos un punto además del origen.');return;}openDeviceSaveDialogForProfile(currentCustomProfile(),null);};
-  $('saveProfileBtn').onclick=saveProfile;$('exportProfilesBtn').onclick=exportProfiles;$('importProfiles').onchange=async e=>{try{const arr=JSON.parse(await e.target.files[0].text());if(!Array.isArray(arr))throw Error('Formato inválido');state.profiles=arr;saveLocal();renderProfiles();}catch(err){alert('No se pudo importar: '+err.message);}e.target.value='';};
+  $('customCurveChart').addEventListener('click',e=>{
+    const i=selectNearestCustomPoint(e);
+    if(i<0)return;
+    state.customSelectedIndex=i;
+    renderCustomEditor();
+  });
+
+  $('saveProfileBtn').onclick=saveProfile;
+  $('saveCurrentRampDeviceBtn').onclick=()=>{
+    openDeviceSaveDialogForProfile(currentRampProfile(),null);
+  };
   $('profileList').onclick=e=>{const ds=e.target.dataset;if(ds.load!=null)loadProfile(Number(ds.load));if(ds.run!=null)runProfile(Number(ds.run));if(ds.delete!=null){state.profiles.splice(Number(ds.delete),1);saveLocal();renderProfiles();}if(ds.upload!=null)openDeviceSaveDialog(Number(ds.upload));};
   $('refreshDeviceProfilesBtn').onclick=requestDeviceProfiles;
   $('deviceProfileList').onclick=e=>{const ds=e.target.dataset;if(ds.deviceRun!=null)send(`PROFILE:RUN:${Number(ds.deviceRun)}`);if(ds.deviceDelete!=null)deleteDeviceProfile(Number(ds.deviceDelete));};
@@ -1170,22 +1227,48 @@ function runStartupSplash(){
   requestAnimationFrame(tick);
 }
 
+function updateLandscapeFallback(){
+  const portrait=window.innerHeight>window.innerWidth;
+  document.documentElement.classList.toggle('force-landscape',portrait);
+  requestAnimationFrame(()=>{
+    previewChart?.resize();
+    rampLiveChart?.resize();
+    inputHistoryChart?.resize();
+    customCurveChart?.resize();
+  });
+}
+
 async function requestImmersiveMode(){
   try{
     if(document.fullscreenElement==null && document.documentElement.requestFullscreen){
       await document.documentElement.requestFullscreen({navigationUI:'hide'});
     }
   }catch(e){}
+
+  let locked=false;
   try{
     if(screen.orientation&&typeof screen.orientation.lock==='function'){
-      await screen.orientation.lock('landscape');
+      try{
+        await screen.orientation.lock('landscape-primary');
+      }catch(e){
+        await screen.orientation.lock('landscape');
+      }
+      locked=true;
     }
   }catch(e){}
+
+  // Si Android/Chrome no concede el bloqueo, forzamos igualmente una
+  // presentación horizontal rotando la superficie completa de la PWA.
+  setTimeout(updateLandscapeFallback,locked?120:0);
 }
 
 function bindImmersiveMode(){
-  // En una PWA instalada, el manifest ya solicita fullscreen + landscape.
-  // En navegador, las APIs necesitan una interacción del usuario.
+  updateLandscapeFallback();
+  window.addEventListener('resize',updateLandscapeFallback);
+  window.addEventListener('orientationchange',()=>setTimeout(updateLandscapeFallback,120));
+
+  // En una PWA instalada, el manifest solicita landscape-primary/fullscreen.
+  // En navegador, el primer toque permite pedir Fullscreen + Orientation Lock.
   const once=()=>requestImmersiveMode();
   document.addEventListener('pointerdown',once,{once:true});
   window.addEventListener('appinstalled',()=>{

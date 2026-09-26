@@ -7,30 +7,29 @@
   <meta name="description" content="Simulink - simulación y medición 4-20 mA mediante Web Serial y HC-05">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.8.0">
+  <link rel="stylesheet" href="styles.css?v=1.9.0">
   <title>Simulink · 4–20 mA</title>
 </head>
 <body>
-<div class="portrait-orientation-lock" aria-hidden="true">
-  <div class="portrait-orientation-card">
-    <div class="rotate-device-icon" aria-hidden="true">↻</div>
-    <span class="label">ORIENTACIÓN</span>
-    <h2>Usá Simulink en horizontal</h2>
-    <p>Esta aplicación está diseñada como instrumento de banco. Girá el teléfono o tablet para trabajar con una interfaz similar a la versión de PC.</p>
+<div id="splashScreen" class="app-splash" aria-live="polite">
+  <div class="app-splash-card">
+    <div class="splash-brand">UconnectME</div>
+    <div class="splash-division">Instrumentación</div>
+    <div class="splash-product">Simulink <span>v1.9.0</span></div>
+    <div class="splash-loader" aria-hidden="true"><i id="splashProgressBar"></i></div>
+    <div id="splashProgressText" class="splash-progress-text">Iniciando instrumento… 0%</div>
   </div>
 </div>
 
-<header class="topbar">
-  <div>
-    <div class="eyebrow">UconnectME · Instrumentación</div>
-    <h1>Simulink <small style="font-size:11px;opacity:.65">v1.8.0</small></h1>
-  </div>
-  <div class="top-actions">
-    <span id="supportPill" class="pill">Web Serial</span>
-    <button id="installBtn" class="icon-btn" hidden aria-label="Instalar">＋</button>
-    <button id="themeBtn" class="icon-btn" aria-label="Cambiar tema">◐</button>
-  </div>
-</header>
+
+<nav class="tabs top-tabs" aria-label="Secciones principales">
+  <button class="tab active" data-tab="output"><span class="tab-icon">↗</span><small>Salida</small></button>
+  <button class="tab" data-tab="input"><span class="tab-icon">↘</span><small>Entrada</small></button>
+  <button class="tab" data-tab="ramps"><span class="tab-icon">⌁</span><small>Rampas</small></button>
+  <button class="tab" data-tab="profiles"><span class="tab-icon">▣</span><small>Ensayos</small></button>
+  <button class="tab" data-tab="calibration"><span class="tab-icon">◎</span><small>Calibrar</small></button>
+  <button class="tab" data-tab="connect"><span class="tab-icon">⚙</span><small>Configuración</small></button>
+</nav>
 
 <main class="shell mobile-shell">
   <section id="tab-output" class="panel active">
@@ -189,7 +188,7 @@
       <section id="ramp-pane-custom" class="ramp-pane">
         <div class="multipoint-scroll-header">
           <span>Área de edición gráfica</span>
-          <small>Deslizá horizontalmente para recorrer todo el editor.</small>
+          <small>Seguimiento automático activo mientras agregás puntos.</small>
         </div>
         <div class="horizontal-scroll-shell" tabindex="0" aria-label="Editor multipunto desplazable horizontalmente">
           <div class="horizontal-scroll-content">
@@ -365,7 +364,15 @@
 
   <section id="tab-connect" class="panel">
     <article class="card">
-      <div class="card-head"><div><span class="label">CONEXIÓN</span><h2>HC-05 / Simulación</h2></div></div>
+      <div class="card-head">
+        <div><span class="label">CONFIGURACIÓN</span><h2>Instrumento / HC-05</h2></div>
+        <span id="supportPill" class="pill">Web Serial</span>
+      </div>
+      <div class="settings-actions">
+        <button id="themeBtn" class="btn settings-action" type="button"><span>◐</span><b>Claro / oscuro</b></button>
+        <button id="installBtn" class="btn settings-action" type="button" disabled><span>＋</span><b>Instalar aplicación</b></button>
+        <button id="fullscreenBtn" class="btn settings-action" type="button"><span>⛶</span><b>Pantalla completa</b></button>
+      </div>
       <div class="form-grid">
         <label>Modo<select id="transportMode"><option value="serial" selected>Web Serial / HC-05</option><option value="simulation">Simulación</option></select></label>
         <label>Baud rate<select id="baudRate"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select></label>
@@ -416,17 +423,9 @@
 </dialog>
 </main>
 
-<nav class="tabs bottom-tabs" aria-label="Secciones">
-  <button class="tab active" data-tab="output"><span class="tab-icon">↗</span><small>Salida</small></button>
-  <button class="tab" data-tab="input"><span class="tab-icon">↘</span><small>Entrada</small></button>
-  <button class="tab" data-tab="ramps"><span class="tab-icon">⌁</span><small>Rampas</small></button>
-  <button class="tab" data-tab="profiles"><span class="tab-icon">▣</span><small>Ensayos</small></button>
-  <button class="tab" data-tab="calibration"><span class="tab-icon">◎</span><small>Calibrar</small></button>
-  <button class="tab" data-tab="connect"><span class="tab-icon">⌁</span><small>Conexión</small></button>
-</nav>
 
-<footer>Simulink · Web Serial / HC-05 · <span id="version">v1.8.0</span></footer>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js" defer></script>
-<script src="app.js?v=1.8.0" defer></script>
+<script src="app.js?v=1.9.0" defer></script>
 </body>
 </html>

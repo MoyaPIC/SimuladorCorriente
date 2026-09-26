@@ -193,10 +193,22 @@ function applyScale(prefix){const s=scaleFromInputs(prefix);if(!Number.isFinite(
 async function sendCalibration(prefix){applyScale(prefix);const s=prefix==='out'?state.outScale:state.inScale;const ch=prefix==='out'?'OUT':'IN';await send(`CAL:${ch}:TYPE:${s.type}`);await send(`CAL:${ch}:RANGE:${s.min}:${s.max}:${s.unit}`);await send(`CAL:${ch}:CURRENT:${s.currentMin}:${s.currentMax}`);await send(`CAL:${ch}:POINTS:${s.measuredLow}:${s.measuredHigh}`);}
 
 function updateScaleCards(){
-  const out=$('outputScaleSummary'),inp=$('inputScaleSummary');
-  if(out)out.innerHTML=`<b>${state.outScale.name}</b><br>${fmt(state.outScale.min,2)} a ${fmt(state.outScale.max,2)} ${state.outScale.unit} ↔ 4.0–20.0 mA`;
+  const inp=$('inputScaleSummary');
   if(inp)inp.innerHTML=`<b>${state.inScale.name}</b><br>${fmt(state.inScale.min,2)} a ${fmt(state.inScale.max,2)} ${state.inScale.unit} ↔ 4.0–20.0 mA`;
-  if($('rampRunUnit'))$('rampRunUnit').textContent=state.outScale.unit;if($('rampStartUnit'))$('rampStartUnit').textContent=state.outScale.unit;if($('rampEndUnit'))$('rampEndUnit').textContent=state.outScale.unit;
+
+  if($('rampRunUnit'))$('rampRunUnit').textContent=state.outScale.unit;
+  if($('rampStartUnit'))$('rampStartUnit').textContent=state.outScale.unit;
+  if($('rampEndUnit'))$('rampEndUnit').textContent=state.outScale.unit;
+
+  // Limita también los campos de la rampa al rango de ingeniería activo.
+  const lo=Math.min(Number(state.outScale.min),Number(state.outScale.max));
+  const hi=Math.max(Number(state.outScale.min),Number(state.outScale.max));
+  ['rampStart','rampEnd'].forEach(id=>{
+    const el=$(id);
+    if(!el)return;
+    el.min=lo;
+    el.max=hi;
+  });
 }
 const RAMP_META={
   linear:{label:'Lineal',guide:'La salida avanza de forma continua desde el valor inicial al final.',fields:['start','end','rise','repeats','tick']},
@@ -218,21 +230,87 @@ function updateRampEditor(){
   drawRampPreview();
 }
 function drawRampPreview(){
-  const c=$('rampPreview');if(!c)return;
+  const c=$('rampPreview');
+  if(!c)return;
+
   const ctx=c.getContext('2d'),w=c.width,h=c.height;
-  ctx.clearRect(0,0,w,h);
+  const left=88,right=24,top=28,bottom=54;
   const r=getRampConfig(),seq=buildRamp(r);
-  const values=seq.length?seq:[r.start||0];
-  const min=Number(state.outScale.min),max=Number(state.outScale.max),span=(max-min)||1;
-  ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--border').trim()||'#dfe2e7';
-  ctx.lineWidth=1;ctx.beginPath();
-  for(let i=0;i<=4;i++){const y=24+(h-48)*i/4;ctx.moveTo(48,y);ctx.lineTo(w-18,y);}ctx.stroke();
-  ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#c9252d';
-  ctx.lineWidth=4;ctx.beginPath();
-  values.forEach((v,i)=>{const x=48+(w-70)*(values.length===1?0:i/(values.length-1));const y=24+(h-48)*(1-(Number(v)-min)/span);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+  const values=(seq.length?seq:[r.start||0]).map(Number);
+
+  const scaleLo=Math.min(Number(state.outScale.min),Number(state.outScale.max));
+  const scaleHi=Math.max(Number(state.outScale.min),Number(state.outScale.max));
+  const span=(scaleHi-scaleLo)||1;
+  const safeValues=values.map(v=>clamp(v,scaleLo,scaleHi));
+
+  const css=getComputedStyle(document.documentElement);
+  const border=css.getPropertyValue('--border').trim()||'#dfe2e7';
+  const muted=css.getPropertyValue('--muted').trim()||'#6c7078';
+  const brand=css.getPropertyValue('--brand').trim()||'#c9252d';
+
+  ctx.clearRect(0,0,w,h);
+
+  const plotW=w-left-right;
+  const plotH=h-top-bottom;
+  const xOf=i=>left+(safeValues.length<=1?0:plotW*i/(safeValues.length-1));
+  const yOf=v=>top+plotH*(1-(v-scaleLo)/span);
+
+  // Grilla horizontal.
+  ctx.strokeStyle=border;
+  ctx.lineWidth=1;
+  ctx.beginPath();
+  for(let i=0;i<=4;i++){
+    const y=top+plotH*i/4;
+    ctx.moveTo(left,y);
+    ctx.lineTo(w-right,y);
+  }
   ctx.stroke();
-  const duration=((values.length*Math.max(100,r.tick))/1000)*Math.max(1,r.repeats);
-  $('rampSummary').innerHTML='<b>'+RAMP_META[r.type].label+'</b><span>'+fmt(r.start,2)+' → '+fmt(r.end,2)+' '+state.outScale.unit+'</span><span>'+Math.max(1,r.repeats)+' rep.</span><span>≈ '+fmt(duration,1)+' s</span>';
+
+  // Etiquetas del eje Y, incluyendo la unidad de ingeniería.
+  ctx.fillStyle=muted;
+  ctx.font='22px system-ui';
+  ctx.textAlign='right';
+  ctx.textBaseline='middle';
+  for(let i=0;i<=4;i++){
+    const value=scaleHi-(scaleHi-scaleLo)*i/4;
+    const y=top+plotH*i/4;
+    ctx.fillText(fmt(value,1)+' '+state.outScale.unit,left-12,y);
+  }
+
+  // Eje X expresado en tiempo.
+  const tickMs=Math.max(100,Number(r.tick)||500);
+  const durationOne=Math.max(0,(safeValues.length-1)*tickMs/1000);
+  ctx.textAlign='center';
+  ctx.textBaseline='top';
+  for(let i=0;i<=4;i++){
+    const x=left+plotW*i/4;
+    const t=durationOne*i/4;
+    ctx.fillText(fmt(t,1)+' s',x,h-bottom+14);
+  }
+
+  // Curva dentro del área útil del gráfico.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(left,top,plotW,plotH);
+  ctx.clip();
+  ctx.strokeStyle=brand;
+  ctx.lineWidth=5;
+  ctx.lineJoin='round';
+  ctx.lineCap='round';
+  ctx.beginPath();
+  safeValues.forEach((v,i)=>{
+    const x=xOf(i),y=yOf(v);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  ctx.restore();
+
+  const totalDuration=durationOne*Math.max(1,r.repeats);
+  $('rampSummary').innerHTML=
+    '<b>'+RAMP_META[r.type].label+'</b>'+
+    '<span>'+fmt(r.start,2)+' → '+fmt(r.end,2)+' '+state.outScale.unit+'</span>'+
+    '<span>'+Math.max(1,r.repeats)+' rep.</span>'+
+    '<span>≈ '+fmt(totalDuration,1)+' s</span>';
 }
 
 function updateRampProgress(){
@@ -241,17 +319,109 @@ function updateRampProgress(){
   $('rampProgressText').textContent=p+'%';$('rampProgressFill').style.width=p+'%';
 }
 function drawRampChart(){
-  const c=$('rampChart');if(!c)return;const ctx=c.getContext('2d'),w=c.width,h=c.height;ctx.clearRect(0,0,w,h);
-  ctx.strokeStyle='#64748b';ctx.lineWidth=1;ctx.beginPath();
-  for(let i=0;i<=4;i++){const y=24+(h-48)*i/4;ctx.moveTo(46,y);ctx.lineTo(w-18,y);}ctx.stroke();
-  ctx.fillStyle='#94a3b8';ctx.font='24px system-ui';[20,16,12,8,4].forEach((v,i)=>ctx.fillText(v+' mA',2,32+(h-48)*i/4));
-  const data=state.rampTrace;if(data.length<2)return;
-  const xs=i=>48+(w-70)*i/(data.length-1),ys=v=>24+(h-48)*(20-clamp(Number(v),4,20))/16;
-  const line=(key,color)=>{ctx.strokeStyle=color;ctx.lineWidth=4;ctx.beginPath();let started=false;data.forEach((p,i)=>{if(p[key]==null)return;const x=xs(i),y=ys(p[key]);if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);});ctx.stroke();};
-  line('out',getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#c9252d');line('inp',getComputedStyle(document.documentElement).getPropertyValue('--success').trim()||'#198754');
+  const c=$('rampChart');
+  if(!c)return;
+
+  const ctx=c.getContext('2d'),w=c.width,h=c.height;
+  const left=92,right=24,top=28,bottom=58;
+  const plotW=w-left-right,plotH=h-top-bottom;
+
+  const css=getComputedStyle(document.documentElement);
+  const border=css.getPropertyValue('--border').trim()||'#dfe2e7';
+  const muted=css.getPropertyValue('--muted').trim()||'#6c7078';
+  const brand=css.getPropertyValue('--brand').trim()||'#c9252d';
+  const success=css.getPropertyValue('--success').trim()||'#198754';
+
+  ctx.clearRect(0,0,w,h);
+
+  // Grilla y eje Y 4-20 mA.
+  ctx.strokeStyle=border;
+  ctx.lineWidth=1;
+  ctx.beginPath();
+  for(let i=0;i<=4;i++){
+    const y=top+plotH*i/4;
+    ctx.moveTo(left,y);
+    ctx.lineTo(w-right,y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle=muted;
+  ctx.font='22px system-ui';
+  ctx.textAlign='right';
+  ctx.textBaseline='middle';
+  [20,16,12,8,4].forEach((v,i)=>{
+    const y=top+plotH*i/4;
+    ctx.fillText(v+' mA',left-12,y);
+  });
+
+  const data=state.rampTrace;
+
+  // Mostramos el eje temporal aun con una sola muestra.
+  let elapsed=[];
+  let tMax=1;
+  if(data.length){
+    const t0=Number(data[0].t)||Date.now();
+    elapsed=data.map((p,i)=>{
+      const t=Number(p.t);
+      return Number.isFinite(t)?Math.max(0,(t-t0)/1000):i;
+    });
+    tMax=Math.max(1,...elapsed);
+  }
+
+  ctx.textAlign='center';
+  ctx.textBaseline='top';
+  for(let i=0;i<=4;i++){
+    const x=left+plotW*i/4;
+    ctx.fillText(fmt(tMax*i/4,1)+' s',x,h-bottom+14);
+  }
+
+  if(data.length<1)return;
+
+  const xOf=i=>left+plotW*(elapsed[i]/tMax);
+  const yOf=v=>top+plotH*(20-clamp(Number(v),4,20))/16;
+
+  const drawLine=(key,color,width)=>{
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(left,top,plotW,plotH);
+    ctx.clip();
+    ctx.strokeStyle=color;
+    ctx.lineWidth=width;
+    ctx.lineJoin='round';
+    ctx.lineCap='round';
+    ctx.beginPath();
+    let started=false;
+    data.forEach((p,i)=>{
+      const value=Number(p[key]);
+      if(!Number.isFinite(value))return;
+      const x=xOf(i),y=yOf(value);
+      if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);
+    });
+    if(started)ctx.stroke();
+    ctx.restore();
+  };
+
+  drawLine('out',brand,5);
+  drawLine('inp',success,4);
 }
 
-function getRampConfig(){return{type:$('rampType').value,repeats:Number($('rampRepeats').value)||1,start:Number($('rampStart').value),end:Number($('rampEnd').value),rise:Number($('rampRise').value)||1,holdHigh:Number($('rampHoldHigh').value)||0,fall:Number($('rampFall').value)||1,holdLow:Number($('rampHoldLow').value)||0,steps:Number($('rampSteps').value)||8,tick:Number($('rampTick').value)||500,points:clone(state.points)};}
+function getRampConfig(){
+  const lo=Math.min(Number(state.outScale.min),Number(state.outScale.max));
+  const hi=Math.max(Number(state.outScale.min),Number(state.outScale.max));
+  return{
+    type:$('rampType').value,
+    repeats:Math.max(1,Number($('rampRepeats').value)||1),
+    start:clamp(Number($('rampStart').value),lo,hi),
+    end:clamp(Number($('rampEnd').value),lo,hi),
+    rise:Math.max(.1,Number($('rampRise').value)||1),
+    holdHigh:Math.max(0,Number($('rampHoldHigh').value)||0),
+    fall:Math.max(.1,Number($('rampFall').value)||1),
+    holdLow:Math.max(0,Number($('rampHoldLow').value)||0),
+    steps:Math.max(2,Number($('rampSteps').value)||8),
+    tick:Math.max(100,Number($('rampTick').value)||500),
+    points:clone(state.points).map(p=>({t:Math.max(0,Number(p.t)||0),v:clamp(Number(p.v),lo,hi)}))
+  };
+}
 function setRampConfig(r){if(!r)return;[['rampType','type'],['rampRepeats','repeats'],['rampStart','start'],['rampEnd','end'],['rampRise','rise'],['rampHoldHigh','holdHigh'],['rampFall','fall'],['rampHoldLow','holdLow'],['rampSteps','steps'],['rampTick','tick']].forEach(([id,k])=>{if(r[k]!=null)$(id).value=r[k];});state.points=clone(r.points||state.points);renderPoints();updateRampEditor();}
 function buildRamp(r){const tick=r.tick/1000,arr=[];const pushSeg=(a,b,d)=>{const n=Math.max(1,Math.round(d/tick));for(let i=0;i<=n;i++)arr.push(a+(b-a)*i/n);};const hold=(v,d)=>{const n=Math.max(0,Math.round(d/tick));for(let i=0;i<n;i++)arr.push(v);};
   if(r.type==='linear')pushSeg(r.start,r.end,r.rise);
@@ -406,7 +576,8 @@ function bind(){
   bindTabs();$('connectBtn').onclick=connectSerial;$('disconnectBtn').onclick=disconnectSerial;$('startSimulationBtn').onclick=startSimulation;$('transportMode').onchange=()=>{if($('transportMode').value==='serial'){stopSimulation();state.connected=false;$('connectBtn').disabled=false;$('disconnectBtn').disabled=true;$('supportPill').textContent='Web Serial';$('supportPill').className='pill';$('modeStatus').textContent='Web Serial seleccionado. Vinculá el HC-05 en Android y luego presioná Conectar.';setSerialDiag('esperando selección del puerto.');}else{$('modeStatus').textContent='Modo simulación listo para usar sin hardware.';}};
   $('manualSlider').oninput=e=>{const v=clamp(Number(e.target.value),4,20);$('manualCurrent').value=v.toFixed(1);state.outputMa=v;renderMain();};$('manualSlider').onchange=e=>applyOutput(Number(e.target.value));$('manualCurrent').onchange=e=>applyOutput(Math.round(clamp(Number(e.target.value),4,20)*10)/10);$('minusBtn').onclick=()=>applyOutput(Math.round(clamp(state.outputMa-.1,4,20)*10)/10);$('plusBtn').onclick=()=>applyOutput(Math.round(clamp(state.outputMa+.1,4,20)*10)/10);$('applyCurrentBtn').onclick=()=>applyOutput(Math.round(clamp(Number($('manualCurrent').value),4,20)*10)/10);
   $('outputEnabled').onchange=async e=>send(e.target.checked?'SET:OUTPUT:ON':'SET:OUTPUT:OFF');
-  $('resetStatsBtn').onclick=()=>{state.samples=[];renderMain();};document.querySelectorAll('.ramp-type-btn').forEach(b=>b.onclick=()=>{$('rampType').value=b.dataset.rampType;updateRampEditor();});$('rampType').onchange=updateRampEditor;['rampStart','rampEnd','rampRise','rampHoldHigh','rampFall','rampHoldLow','rampSteps','rampRepeats','rampTick'].forEach(id=>$(id).addEventListener('input',drawRampPreview));$('runRampBtn').onclick=runRamp;$('pauseRampBtn').onclick=()=>{state.rampPaused=!state.rampPaused;$('pauseRampBtn').textContent=state.rampPaused?'▶ Continuar':'Ⅱ Pausar';$('rampStatus').textContent=state.rampPaused?'Rampa pausada.':'Rampa ejecutándose…';};$('stopRampBtn').onclick=stopRamp;
+  $('resetStatsBtn').onclick=()=>{state.samples=[];renderMain();};document.querySelectorAll('.ramp-type-btn').forEach(b=>b.onclick=()=>{$('rampType').value=b.dataset.rampType;updateRampEditor();});$('rampType').onchange=updateRampEditor;['rampStart','rampEnd','rampRise','rampHoldHigh','rampFall','rampHoldLow','rampSteps','rampRepeats','rampTick'].forEach(id=>$(id).addEventListener('input',drawRampPreview));
+  ['rampStart','rampEnd'].forEach(id=>$(id).addEventListener('change',e=>{const r=getRampConfig();e.target.value=id==='rampStart'?r.start:r.end;drawRampPreview();}));$('runRampBtn').onclick=runRamp;$('pauseRampBtn').onclick=()=>{state.rampPaused=!state.rampPaused;$('pauseRampBtn').textContent=state.rampPaused?'▶ Continuar':'Ⅱ Pausar';$('rampStatus').textContent=state.rampPaused?'Rampa pausada.':'Rampa ejecutándose…';};$('stopRampBtn').onclick=stopRamp;
   $('addPointBtn').onclick=()=>{const last=state.points.at(-1)||{t:0,v:0};state.points.push({t:last.t+10,v:last.v});renderPoints();};$('pointsBody').oninput=e=>{if(e.target.dataset.i!=null){state.points[Number(e.target.dataset.i)][e.target.dataset.k]=Number(e.target.value);drawRampPreview();}};$('pointsBody').onclick=e=>{if(e.target.dataset.del!=null){state.points.splice(Number(e.target.dataset.del),1);renderPoints();}};
   $('saveProfileBtn').onclick=saveProfile;$('exportProfilesBtn').onclick=exportProfiles;$('importProfiles').onchange=async e=>{try{const arr=JSON.parse(await e.target.files[0].text());if(!Array.isArray(arr))throw Error('Formato inválido');state.profiles=arr;saveLocal();renderProfiles();}catch(err){alert('No se pudo importar: '+err.message);}e.target.value='';};
   $('profileList').onclick=e=>{const ds=e.target.dataset;if(ds.load!=null)loadProfile(Number(ds.load));if(ds.run!=null)runProfile(Number(ds.run));if(ds.delete!=null){state.profiles.splice(Number(ds.delete),1);saveLocal();renderProfiles();}if(ds.upload!=null)openDeviceSaveDialog(Number(ds.upload));};

@@ -1062,7 +1062,26 @@ function bind(){
   $('installBtn').onclick=async()=>{if(state.installPrompt){state.installPrompt.prompt();await state.installPrompt.userChoice;state.installPrompt=null;$('installBtn').hidden=true;}};
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();state.installPrompt=e;$('installBtn').hidden=false;});
 }
+async function requestLandscapeOrientation(){
+  try{
+    const standalone=window.matchMedia?.('(display-mode: standalone)').matches===true || window.navigator.standalone===true;
+    if(!standalone)return;
+    if(screen.orientation&&typeof screen.orientation.lock==='function'){
+      await screen.orientation.lock('landscape');
+    }
+  }catch(e){
+    // Algunos navegadores/sistemas no permiten bloquear la orientación.
+    // La interfaz sigue funcionando y el CSS solicita girar el dispositivo.
+  }
+}
+function bindLandscapeOrientation(){
+  requestLandscapeOrientation();
+  const once=()=>requestLandscapeOrientation();
+  document.addEventListener('pointerdown',once,{once:true,passive:true});
+}
+
 function init(){
+  bindLandscapeOrientation();
   if(localStorage.getItem('simcorr_theme')==='dark')document.documentElement.dataset.theme='dark';
   loadLocal();populateTypeSelect('outSensorType');populateTypeSelect('inSensorType');fillScaleInputs('out',state.outScale);fillScaleInputs('in',state.inScale);renderPoints();renderProfiles();renderDeviceProfiles();bind();setRampPane('config');updateRampEditor();renderMain();
   $('transportMode').value='serial';

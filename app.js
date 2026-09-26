@@ -22,14 +22,16 @@ let serialReadBuffer="";
 let previewChart=null;
 let rampLiveChart=null;
 let inputHistoryChart=null;
+let customCurveChart=null;
 const clone=x=>JSON.parse(JSON.stringify(x));
 const makeScale=(type='current')=>({...clone(TYPES[type]),type,currentMin:4,currentMax:20,measuredLow:4,measuredHigh:20});
 const state={
   outScale:makeScale('current'), inScale:makeScale('current'), outputMa:12, inputMa:null, outputOpen:false,
   port:null,reader:null,writer:null,connected:false,simulation:false,simTimer:null,simPhase:0,
-  samples:[],chart:[],profiles:[],points:[{t:0,v:0},{t:10,v:100}], rampTimer:null,rampPaused:false,rampState:null,
+  samples:[],chart:[],profiles:[],points:[{t:0,v:0}], rampTimer:null,rampPaused:false,rampState:null,
   installPrompt:null,rampTrace:[],
-  deviceProfiles:Array(16).fill(null),deviceSlotNames:{},awaitingProfileList:false,pendingUploadIndex:null
+  deviceProfiles:Array(16).fill(null),deviceSlotNames:{},awaitingProfileList:false,pendingUploadIndex:null,pendingUploadProfile:null,
+  customAddMode:false,customSelectedIndex:0,customDraggingIndex:null
 };
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function engToMa(v,s){const lo=Math.min(s.min,s.max),hi=Math.max(s.min,s.max),cv=clamp(Number(v),lo,hi);const span=s.max-s.min||1;const ma=s.currentMin+(cv-s.min)*(s.currentMax-s.currentMin)/span;return clamp(ma,4,20);}
@@ -302,7 +304,9 @@ function refreshChartsForTheme(){
   previewChart=destroyChart(previewChart);
   rampLiveChart=destroyChart(rampLiveChart);
   inputHistoryChart=destroyChart(inputHistoryChart);
+  customCurveChart=destroyChart(customCurveChart);
   drawRampPreview();
+  drawCustomCurveChart();
   drawRampChart();
   drawChart();
 }
@@ -332,11 +336,292 @@ const RAMP_META={
   cycle:{label:'Ciclo',guide:'Sube, mantiene el máximo, baja y mantiene el mínimo antes de repetir.',fields:['start','end','rise','holdHigh','fall','holdLow','repeats','tick']},
   custom:{label:'Multipunto',guide:'Definí libremente cada punto de tiempo y valor.',fields:['repeats','tick']}
 };
+function customScaleBounds(){
+  return{
+    lo:Math.min(Number(state.outScale.min),Number(state.outScale.max)),
+    hi:Math.max(Number(state.outScale.min),Number(state.outScale.max))
+  };
+}
+function customOriginValue(){
+  const {lo,hi}=customScaleBounds();
+  return clamp(0,lo,hi);
+}
+function customTimeSnap(){
+  return Math.max(.1,Number($('customTimeSnap')?.value)||.5);
+}
+function customTimeMax(){
+  const pointsMax=Math.max(0,...state.points.map(p=>Number(p.t)||0));
+  const configured=Math.max(1,Number($('customTimeMax')?.value)||60);
+  return Math.max(configured,Math.ceil(pointsMax));
+}
+function snapNumber(value,step){
+  return Math.round(Number(value)/step)*step;
+}
+function ensureCustomOrigin(){
+  const {lo,hi}=customScaleBounds();
+  state.points=(state.points||[])
+    .map(p=>({t:Math.max(0,Number(p.t)||0),v:clamp(Number(p.v),lo,hi)}))
+    .sort((a,b)=>a.t-b.t);
+
+  const originValue=customOriginValue();
+  const atZero=state.points.findIndex(p=>Math.abs(p.t)<.0001);
+  if(atZero<0)state.points.unshift({t:0,v:originValue});
+  else{
+    const origin=state.points.splice(atZero,1)[0];
+    origin.t=0;
+    origin.v=originValue;
+    state.points.unshift(origin);
+  }
+
+  // No permitimos dos puntos con exactamente el mismo instante.
+  const clean=[state.points[0]];
+  for(let i=1;i<state.points.length;i++){
+    const p=state.points[i];
+    if(p.t>clean[clean.length-1].t+.0001)clean.push(p);
+  }
+  state.points=clean;
+  state.customSelectedIndex=clamp(Number(state.customSelectedIndex)||0,0,state.points.length-1);
+}
+function updateCustomAddModeUI(){
+  const btn=$('addPointBtn'),hint=$('customEditorHint');
+  if(!btn||!hint)return;
+  btn.textContent=state.customAddMode?'✓ Terminar de agregar':'＋ Agregar punto';
+  btn.classList.toggle('active-add',state.customAddMode);
+  hint.textContent=state.customAddMode
+    ?'Modo agregar activo: tocá la gráfica para insertar puntos. Podés agregar varios seguidos.'
+    :'Seleccioná o arrastrá un punto para editarlo. El origen t=0 permanece fijo.';
+}
+function renderCustomPointPanel(){
+  ensureCustomOrigin();
+  const i=state.customSelectedIndex;
+  const p=state.points[i]||state.points[0];
+  const unit=state.outScale.unit||'';
+  $('customSelectedLabel').textContent=i===0?'Origen':'Punto '+i;
+  $('customPointCount').textContent=state.points.length+' '+(state.points.length===1?'punto':'puntos');
+  $('customPointTime').value=fmt(p.t,1);
+  $('customPointValue').value=fmt(p.v,2);
+  $('customPointTime').disabled=i===0;
+  $('customPointValue').disabled=i===0;
+  $('applyCustomPointBtn').disabled=i===0;
+  $('deletePointBtn').disabled=i===0;
+  $('customPointUnit').textContent=unit;
+
+  const list=$('customPointList');
+  list.innerHTML='';
+  state.points.forEach((pt,index)=>{
+    const b=document.createElement('button');
+    b.type='button';
+    b.className='custom-point-chip'+(index===i?' selected':'');
+    b.dataset.customSelect=index;
+    b.innerHTML='<b>'+(index===0?'Origen':'P'+index)+'</b><span>'+fmt(pt.t,1)+' s</span><span>'+fmt(pt.v,2)+' '+escapeHtml(unit)+'</span>';
+    list.appendChild(b);
+  });
+}
+function updateCustomChartData(){
+  if(!customCurveChart)return;
+  const c=chartColors();
+  const data=state.points.map(p=>({x:p.t,y:p.v}));
+  customCurveChart.data.datasets[0].data=data;
+  customCurveChart.data.datasets[0].pointBackgroundColor=data.map((_,i)=>i===state.customSelectedIndex?c.brandStrong:c.brand);
+  customCurveChart.data.datasets[0].pointRadius=data.map((_,i)=>i===state.customSelectedIndex?8:6);
+  customCurveChart.data.datasets[0].pointHoverRadius=9;
+  customCurveChart.options.scales.x.max=customTimeMax();
+  const {lo,hi}=customScaleBounds();
+  customCurveChart.options.scales.y.min=lo;
+  customCurveChart.options.scales.y.max=hi;
+  customCurveChart.update('none');
+}
+function drawCustomCurveChart(){
+  if(!$('customPointsCard')||$('customPointsCard').hidden||!chartReady())return;
+  ensureCustomOrigin();
+  const canvas=$('customCurveChart');if(!canvas)return;
+  const c=chartColors(),{lo,hi}=customScaleBounds();
+  const data=state.points.map(p=>({x:p.t,y:p.v}));
+
+  const options=commonChartOptions();
+  options.plugins.legend.display=false;
+  options.interaction={mode:'nearest',intersect:true};
+  options.plugins.tooltip.callbacks={
+    title:items=>'Tiempo: '+fmt(items[0]?.parsed?.x,1)+' s',
+    label:item=>' '+state.outScale.name+': '+fmt(item.parsed.y,2)+' '+state.outScale.unit
+  };
+  const xAxis=chartAxis('Tiempo','s',0,customTimeMax());
+  xAxis.type='linear';
+  xAxis.ticks={...xAxis.ticks,callback:v=>fmt(v,0)+' s'};
+  const yAxis=chartAxis(state.outScale.name,state.outScale.unit,lo,hi);
+  yAxis.ticks={...yAxis.ticks,callback:v=>fmt(v,1)+' '+state.outScale.unit};
+  options.scales={x:xAxis,y:yAxis};
+
+  customCurveChart=destroyChart(customCurveChart);
+  customCurveChart=new Chart(canvas,{
+    type:'line',
+    data:{datasets:[chartDataset('Curva multipunto',c.brand,data,{
+      borderWidth:3,
+      pointRadius:data.map((_,i)=>i===state.customSelectedIndex?8:6),
+      pointHoverRadius:9,
+      pointHitRadius:16,
+      pointBackgroundColor:data.map((_,i)=>i===state.customSelectedIndex?c.brandStrong:c.brand),
+      pointBorderColor:c.surface,
+      pointBorderWidth:2,
+      tension:0
+    })]},
+    options
+  });
+}
+function renderCustomEditor(){
+  ensureCustomOrigin();
+  const maxPoint=Math.max(0,...state.points.map(p=>Number(p.t)||0));
+  if($('customTimeMax')&&Number($('customTimeMax').value)<maxPoint)$('customTimeMax').value=Math.ceil(maxPoint);
+  renderCustomPointPanel();
+  updateCustomAddModeUI();
+  drawCustomCurveChart();
+  drawRampPreview();
+}
+function customChartPosition(event){
+  if(!customCurveChart)return null;
+  const pos=Chart.helpers.getRelativePosition(event,customCurveChart);
+  const area=customCurveChart.chartArea;
+  if(pos.x<area.left||pos.x>area.right||pos.y<area.top||pos.y>area.bottom)return null;
+  return{
+    t:customCurveChart.scales.x.getValueForPixel(pos.x),
+    v:customCurveChart.scales.y.getValueForPixel(pos.y)
+  };
+}
+function selectNearestCustomPoint(event){
+  if(!customCurveChart)return -1;
+  const pos=Chart.helpers.getRelativePosition(event,customCurveChart);
+  let best=-1,bestD=18;
+  state.points.forEach((p,i)=>{
+    const px=customCurveChart.scales.x.getPixelForValue(p.t);
+    const py=customCurveChart.scales.y.getPixelForValue(p.v);
+    const d=Math.hypot(pos.x-px,pos.y-py);
+    if(d<bestD){bestD=d;best=i;}
+  });
+  return best;
+}
+function addCustomPointFromEvent(event){
+  const pos=customChartPosition(event);if(!pos)return;
+  const snap=customTimeSnap(),{lo,hi}=customScaleBounds();
+  let t=clamp(snapNumber(pos.t,snap),snap,customTimeMax());
+  const v=clamp(snapNumber(pos.v,.1),lo,hi);
+
+  const existing=state.points.findIndex((p,i)=>i>0&&Math.abs(p.t-t)<snap*.45);
+  if(existing>0){
+    state.points[existing].v=v;
+    state.customSelectedIndex=existing;
+  }else{
+    state.points.push({t,v});
+    state.points.sort((a,b)=>a.t-b.t);
+    state.customSelectedIndex=state.points.findIndex(p=>Math.abs(p.t-t)<.0001&&Math.abs(p.v-v)<.0001);
+  }
+  renderCustomEditor();
+}
+function handleCustomPointerDown(event){
+  if($('rampType').value!=='custom'||!customCurveChart)return;
+  if(state.customAddMode){
+    event.preventDefault();
+    addCustomPointFromEvent(event);
+    return;
+  }
+  const i=selectNearestCustomPoint(event);
+  if(i<0)return;
+  state.customSelectedIndex=i;
+  if(i>0)state.customDraggingIndex=i;
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+  renderCustomPointPanel();
+  updateCustomChartData();
+}
+function handleCustomPointerMove(event){
+  const i=state.customDraggingIndex;
+  if(i==null||i<=0||!customCurveChart)return;
+  event.preventDefault();
+  const pos=customChartPosition(event);if(!pos)return;
+
+  const snap=customTimeSnap(),{lo,hi}=customScaleBounds();
+  const prev=state.points[i-1];
+  const next=state.points[i+1];
+  const minT=prev.t+snap;
+  const maxT=next?next.t-snap:customTimeMax();
+  state.points[i].t=clamp(snapNumber(pos.t,snap),minT,Math.max(minT,maxT));
+  state.points[i].v=clamp(snapNumber(pos.v,.1),lo,hi);
+
+  renderCustomPointPanel();
+  updateCustomChartData();
+  drawRampPreview();
+}
+function handleCustomPointerUp(event){
+  if(state.customDraggingIndex==null)return;
+  state.customDraggingIndex=null;
+  try{event.currentTarget.releasePointerCapture?.(event.pointerId);}catch(e){}
+  renderCustomEditor();
+}
+function applySelectedCustomPoint(){
+  const i=state.customSelectedIndex;
+  if(i<=0||!state.points[i])return;
+  const snap=customTimeSnap(),{lo,hi}=customScaleBounds();
+  const prev=state.points[i-1],next=state.points[i+1];
+  const minT=prev.t+snap,maxT=next?next.t-snap:customTimeMax();
+  state.points[i].t=clamp(snapNumber(Number($('customPointTime').value),snap),minT,Math.max(minT,maxT));
+  state.points[i].v=clamp(Number($('customPointValue').value),lo,hi);
+  renderCustomEditor();
+}
+function deleteSelectedCustomPoint(){
+  const i=state.customSelectedIndex;
+  if(i<=0)return;
+  state.points.splice(i,1);
+  state.customSelectedIndex=Math.max(0,i-1);
+  renderCustomEditor();
+}
+function clearCustomCurve(){
+  state.points=[{t:0,v:customOriginValue()}];
+  state.customSelectedIndex=0;
+  state.customAddMode=false;
+  renderCustomEditor();
+}
+function currentCustomProfile(){
+  const ramp=getRampConfig();
+  ramp.type='custom';
+  return{
+    name:'Multipunto '+(state.profiles.filter(p=>p.ramp?.type==='custom').length+1),
+    desc:'Curva multipunto · '+state.points.length+' puntos · '+fmt(Math.max(...state.points.map(p=>p.t)),1)+' s',
+    scale:clone(state.outScale),
+    ramp,
+    savedAt:new Date().toISOString()
+  };
+}
+function saveCurrentCustomProfile(){
+  const p=currentCustomProfile();
+  state.profiles.push(p);
+  saveLocal();
+  renderProfiles();
+  $('customEditorHint').textContent='Ensayo guardado como “'+p.name+'”. Podés administrarlo desde la pestaña Ensayos.';
+}
+function openDeviceSaveDialogForProfile(p,index=null){
+  if(!p)return;
+  state.pendingUploadIndex=index;
+  state.pendingUploadProfile=clone(p);
+  $('deviceSaveSummary').innerHTML='<b>'+escapeHtml(p.name||'Ensayo')+'</b><br>'+escapeHtml(p.scale?.name||'Variable')+': '+(p.scale?(p.scale.min+'–'+p.scale.max+' '+escapeHtml(p.scale.unit)):'')+' · '+Math.max(1,Number(p.ramp?.repeats)||1)+' repeticiones';
+  const select=$('deviceSlotSelect');
+  select.innerHTML='';
+  for(let slot=1;slot<=16;slot++){
+    const op=document.createElement('option');op.value=slot;
+    const occupied=state.deviceProfiles[slot-1];
+    op.textContent='Slot '+slot+' — '+(occupied?(state.deviceSlotNames[slot]||'ocupado'):'vacío');
+    select.appendChild(op);
+  }
+  const firstEmpty=state.deviceProfiles.findIndex(x=>!x);
+  select.value=String(firstEmpty>=0?firstEmpty+1:1);
+  $('deviceUploadProgress').hidden=true;
+  updateDeviceSlotWarning();
+  $('deviceSaveDialog').showModal();
+}
+
 function updateRampEditor(){
   const type=$('rampType').value,meta=RAMP_META[type]||RAMP_META.linear;
   document.querySelectorAll('.ramp-type-btn').forEach(b=>b.classList.toggle('active',b.dataset.rampType===type));
   document.querySelectorAll('[data-ramp-field]').forEach(el=>el.hidden=!meta.fields.includes(el.dataset.rampField));
   $('customPointsCard').hidden=type!=='custom';
+  if(type==='custom')renderCustomEditor();
   $('rampTypeBadge').textContent=meta.label;
   $('rampGuideText').textContent=meta.guide;
   $('rampRiseLabel').textContent=type==='steps'?'Duración total':'Tiempo de subida';
@@ -451,7 +736,7 @@ function getRampConfig(){
     points:clone(state.points).map(p=>({t:Math.max(0,Number(p.t)||0),v:clamp(Number(p.v),lo,hi)}))
   };
 }
-function setRampConfig(r){if(!r)return;[['rampType','type'],['rampRepeats','repeats'],['rampStart','start'],['rampEnd','end'],['rampRise','rise'],['rampHoldHigh','holdHigh'],['rampFall','fall'],['rampHoldLow','holdLow'],['rampSteps','steps'],['rampTick','tick']].forEach(([id,k])=>{if(r[k]!=null)$(id).value=r[k];});state.points=clone(r.points||state.points);renderPoints();updateRampEditor();}
+function setRampConfig(r){if(!r)return;[['rampType','type'],['rampRepeats','repeats'],['rampStart','start'],['rampEnd','end'],['rampRise','rise'],['rampHoldHigh','holdHigh'],['rampFall','fall'],['rampHoldLow','holdLow'],['rampSteps','steps'],['rampTick','tick']].forEach(([id,k])=>{if(r[k]!=null)$(id).value=r[k];});state.points=clone(r.points||state.points);state.customSelectedIndex=0;ensureCustomOrigin();renderCustomEditor();updateRampEditor();}
 function buildRamp(r){const tick=r.tick/1000,arr=[];const pushSeg=(a,b,d)=>{const n=Math.max(1,Math.round(d/tick));for(let i=0;i<=n;i++)arr.push(a+(b-a)*i/n);};const hold=(v,d)=>{const n=Math.max(0,Math.round(d/tick));for(let i=0;i<n;i++)arr.push(v);};
   if(r.type==='linear')pushSeg(r.start,r.end,r.rise);
   else if(r.type==='triangle'){pushSeg(r.start,r.end,r.rise);pushSeg(r.end,r.start,r.fall);}
@@ -461,23 +746,30 @@ function buildRamp(r){const tick=r.tick/1000,arr=[];const pushSeg=(a,b,d)=>{cons
   return arr;
 }
 function stopRamp(){if(state.rampTimer)clearInterval(state.rampTimer);state.rampTimer=null;state.rampState=null;state.rampPaused=false;$('pauseRampBtn').textContent='Ⅱ Pausar';$('rampStatus').textContent='Rampa detenida.';updateRampProgress();drawRampChart();}
-function runRamp(){
+function runRamp(simulationOnly=false){
+  simulationOnly=simulationOnly===true;
   if(state.rampTimer)clearInterval(state.rampTimer);
   const r=getRampConfig(),seq=buildRamp(r);if(!seq.length)return;
   state.rampTrace=[];state.rampPaused=false;state.rampState={r,seq,i:0,rep:0};
-  $('pauseRampBtn').textContent='Ⅱ Pausar';$('rampStatus').textContent='Rampa ejecutándose…';updateRampProgress();drawRampChart();
+  $('pauseRampBtn').textContent='Ⅱ Pausar';$('rampStatus').textContent=simulationOnly?'Simulación de curva en ejecución…':'Rampa ejecutándose…';updateRampProgress();drawRampChart();
   state.rampTimer=setInterval(async()=>{
     if(state.rampPaused)return;
     const rs=state.rampState;if(!rs)return;
     if(rs.i>=rs.seq.length){rs.i=0;rs.rep++;if(rs.rep>=r.repeats){if(state.rampTimer)clearInterval(state.rampTimer);state.rampTimer=null;$('rampStatus').textContent='Rampa finalizada.';$('rampProgressText').textContent='100%';$('rampProgressFill').style.width='100%';return;}}
     const eng=rs.seq[rs.i++],ma=engToMa(eng,state.outScale);
-    await applyOutput(ma);
+    if(simulationOnly){
+      state.outputMa=ma;
+      state.inputMa=ma;
+      renderMain();
+    }else{
+      await applyOutput(ma);
+    }
     state.rampTrace.push({t:Date.now(),out:state.outputMa,inp:state.inputMa,eng});if(state.rampTrace.length>500)state.rampTrace.shift();
     $('rampRunEng').textContent=fmt(eng,2);$('rampRunMa').textContent=fmt(state.outputMa,1);$('rampRunUnit').textContent=state.outScale.unit;
     updateRampProgress();drawRampChart();
   },Math.max(100,r.tick));
 }
-function renderPoints(){$('pointsBody').innerHTML='';state.points.forEach((p,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${i+1}</td><td><input data-i="${i}" data-k="t" type="number" step="0.1" value="${p.t}"></td><td><input data-i="${i}" data-k="v" type="number" step="0.1" value="${p.v}"></td><td><button class="btn small" data-del="${i}">×</button></td>`;$('pointsBody').appendChild(tr);});drawRampPreview();}
+function renderPoints(){renderCustomEditor();}
 function renderProfiles(){
   const box=$('profileList');box.innerHTML='';
   if(!state.profiles.length){
@@ -555,21 +847,7 @@ function updateDeviceSlotWarning(){
 }
 function openDeviceSaveDialog(index){
   const p=state.profiles[index];if(!p)return;
-  state.pendingUploadIndex=index;
-  $('deviceSaveSummary').innerHTML=`<b>${escapeHtml(p.name||'Ensayo')}</b><br>${escapeHtml(p.scale?.name||'Variable')}: ${p.scale?`${p.scale.min}–${p.scale.max} ${escapeHtml(p.scale.unit)}`:''} · ${Math.max(1,Number(p.ramp?.repeats)||1)} repeticiones`;
-  const select=$('deviceSlotSelect');
-  select.innerHTML='';
-  for(let slot=1;slot<=16;slot++){
-    const op=document.createElement('option');op.value=slot;
-    const occupied=state.deviceProfiles[slot-1];
-    op.textContent=`Slot ${slot} — ${occupied?(state.deviceSlotNames[slot]||'ocupado'):'vacío'}`;
-    select.appendChild(op);
-  }
-  const firstEmpty=state.deviceProfiles.findIndex(x=>!x);
-  select.value=String(firstEmpty>=0?firstEmpty+1:1);
-  $('deviceUploadProgress').hidden=true;
-  updateDeviceSlotWarning();
-  $('deviceSaveDialog').showModal();
+  openDeviceSaveDialogForProfile(p,index);
 }
 async function uploadProfile(p,num){
   if(!p||num<1||num>16)return false;
@@ -597,13 +875,13 @@ async function uploadProfile(p,num){
   return true;
 }
 async function confirmDeviceSave(){
-  const p=state.profiles[state.pendingUploadIndex];
+  const p=state.pendingUploadProfile||state.profiles[state.pendingUploadIndex];
   const slot=Number($('deviceSlotSelect').value);
   if(!p||slot<1||slot>16)return;
   $('confirmDeviceSaveBtn').disabled=true;
   const ok=await uploadProfile(p,slot);
   $('confirmDeviceSaveBtn').disabled=false;
-  if(ok){setTimeout(()=>$('deviceSaveDialog').close(),500);}
+  if(ok){state.pendingUploadProfile=null;setTimeout(()=>$('deviceSaveDialog').close(),500);}
 }
 async function deleteDeviceProfile(slot){
   if(slot<1||slot>16)return;
@@ -670,7 +948,7 @@ function bindTabs(){
     if(b.dataset.tab==='profiles'){renderProfiles();renderDeviceProfiles();}
 
     requestAnimationFrame(()=>{
-      if(b.dataset.tab==='ramps'){drawRampPreview();drawRampChart();}
+      if(b.dataset.tab==='ramps'){drawRampPreview();drawRampChart();drawCustomCurveChart();}
       if(b.dataset.tab==='input')drawChart();
     });
   }));
@@ -680,15 +958,28 @@ function bind(){
   $('manualSlider').oninput=e=>{const v=clamp(Number(e.target.value),4,20);$('manualCurrent').value=v.toFixed(1);state.outputMa=v;renderMain();};$('manualSlider').onchange=e=>applyOutput(Number(e.target.value));$('manualCurrent').onchange=e=>applyOutput(Math.round(clamp(Number(e.target.value),4,20)*10)/10);$('minusBtn').onclick=()=>applyOutput(Math.round(clamp(state.outputMa-.1,4,20)*10)/10);$('plusBtn').onclick=()=>applyOutput(Math.round(clamp(state.outputMa+.1,4,20)*10)/10);$('applyCurrentBtn').onclick=()=>applyOutput(Math.round(clamp(Number($('manualCurrent').value),4,20)*10)/10);
   $('outputEnabled').onchange=async e=>send(e.target.checked?'SET:OUTPUT:ON':'SET:OUTPUT:OFF');
   $('resetStatsBtn').onclick=()=>{state.samples=[];renderMain();};document.querySelectorAll('.ramp-type-btn').forEach(b=>b.onclick=()=>{$('rampType').value=b.dataset.rampType;updateRampEditor();});$('rampType').onchange=updateRampEditor;['rampStart','rampEnd','rampRise','rampHoldHigh','rampFall','rampHoldLow','rampSteps','rampRepeats','rampTick'].forEach(id=>$(id).addEventListener('input',drawRampPreview));
-  ['rampStart','rampEnd'].forEach(id=>$(id).addEventListener('change',e=>{const r=getRampConfig();e.target.value=id==='rampStart'?r.start:r.end;drawRampPreview();}));$('runRampBtn').onclick=runRamp;$('pauseRampBtn').onclick=()=>{state.rampPaused=!state.rampPaused;$('pauseRampBtn').textContent=state.rampPaused?'▶ Continuar':'Ⅱ Pausar';$('rampStatus').textContent=state.rampPaused?'Rampa pausada.':'Rampa ejecutándose…';};$('stopRampBtn').onclick=stopRamp;
-  $('addPointBtn').onclick=()=>{const last=state.points.at(-1)||{t:0,v:0};state.points.push({t:last.t+10,v:last.v});renderPoints();};$('pointsBody').oninput=e=>{if(e.target.dataset.i!=null){state.points[Number(e.target.dataset.i)][e.target.dataset.k]=Number(e.target.value);drawRampPreview();}};$('pointsBody').onclick=e=>{if(e.target.dataset.del!=null){state.points.splice(Number(e.target.dataset.del),1);renderPoints();}};
+  ['rampStart','rampEnd'].forEach(id=>$(id).addEventListener('change',e=>{const r=getRampConfig();e.target.value=id==='rampStart'?r.start:r.end;drawRampPreview();}));$('runRampBtn').onclick=()=>runRamp(false);$('pauseRampBtn').onclick=()=>{state.rampPaused=!state.rampPaused;$('pauseRampBtn').textContent=state.rampPaused?'▶ Continuar':'Ⅱ Pausar';$('rampStatus').textContent=state.rampPaused?'Rampa pausada.':'Rampa ejecutándose…';};$('stopRampBtn').onclick=stopRamp;
+  $('addPointBtn').onclick=()=>{state.customAddMode=!state.customAddMode;updateCustomAddModeUI();};
+  $('deletePointBtn').onclick=deleteSelectedCustomPoint;
+  $('clearPointsBtn').onclick=()=>{if(state.points.length<=1||confirm('¿Limpiar todos los puntos de la curva multipunto?'))clearCustomCurve();};
+  $('applyCustomPointBtn').onclick=applySelectedCustomPoint;
+  $('customTimeMax').onchange=()=>{const maxPoint=Math.max(1,...state.points.map(p=>Number(p.t)||0));if(Number($('customTimeMax').value)<maxPoint)$('customTimeMax').value=Math.ceil(maxPoint);drawCustomCurveChart();};
+  $('customTimeSnap').onchange=()=>renderCustomEditor();
+  $('customPointList').onclick=e=>{const b=e.target.closest('[data-custom-select]');if(!b)return;state.customSelectedIndex=Number(b.dataset.customSelect);renderCustomEditor();};
+  $('customCurveChart').addEventListener('pointerdown',handleCustomPointerDown);
+  $('customCurveChart').addEventListener('pointermove',handleCustomPointerMove);
+  $('customCurveChart').addEventListener('pointerup',handleCustomPointerUp);
+  $('customCurveChart').addEventListener('pointercancel',handleCustomPointerUp);
+  $('simulateCustomBtn').onclick=()=>{if(state.points.length<2){alert('Agregá al menos un punto además del origen.');return;}runRamp(true);};
+  $('saveCustomProfileBtn').onclick=()=>{if(state.points.length<2){alert('Agregá al menos un punto además del origen.');return;}saveCurrentCustomProfile();};
+  $('sendCustomDeviceBtn').onclick=()=>{if(state.points.length<2){alert('Agregá al menos un punto además del origen.');return;}openDeviceSaveDialogForProfile(currentCustomProfile(),null);};
   $('saveProfileBtn').onclick=saveProfile;$('exportProfilesBtn').onclick=exportProfiles;$('importProfiles').onchange=async e=>{try{const arr=JSON.parse(await e.target.files[0].text());if(!Array.isArray(arr))throw Error('Formato inválido');state.profiles=arr;saveLocal();renderProfiles();}catch(err){alert('No se pudo importar: '+err.message);}e.target.value='';};
   $('profileList').onclick=e=>{const ds=e.target.dataset;if(ds.load!=null)loadProfile(Number(ds.load));if(ds.run!=null)runProfile(Number(ds.run));if(ds.delete!=null){state.profiles.splice(Number(ds.delete),1);saveLocal();renderProfiles();}if(ds.upload!=null)openDeviceSaveDialog(Number(ds.upload));};
   $('refreshDeviceProfilesBtn').onclick=requestDeviceProfiles;
   $('deviceProfileList').onclick=e=>{const ds=e.target.dataset;if(ds.deviceRun!=null)send(`PROFILE:RUN:${Number(ds.deviceRun)}`);if(ds.deviceDelete!=null)deleteDeviceProfile(Number(ds.deviceDelete));};
   $('deviceSlotSelect').onchange=updateDeviceSlotWarning;
   $('confirmDeviceSaveBtn').onclick=confirmDeviceSave;
-  $('closeDeviceSaveDialog').onclick=()=>$('deviceSaveDialog').close();
+  $('closeDeviceSaveDialog').onclick=()=>{state.pendingUploadProfile=null;$('deviceSaveDialog').close();};
   ['out','in'].forEach(p=>{$(p+'SensorType').onchange=()=>setPresetFromType(p);['SensorUnit','SensorMin','SensorMax','CurrentMin','CurrentMax','MeasuredLow','MeasuredHigh'].forEach(s=>$(p+s).oninput=()=>updateCalInfo(p,scaleFromInputs(p)));});$('applyOutScaleBtn').onclick=()=>applyScale('out');$('applyInScaleBtn').onclick=()=>applyScale('in');$('sendOutCalBtn').onclick=()=>sendCalibration('out');$('sendInCalBtn').onclick=()=>sendCalibration('in');
   $('terminalSendBtn').onclick=()=>{const v=$('terminalInput').value.trim();if(v){send(v);$('terminalInput').value='';}};$('clearTerminalBtn').onclick=()=>{$('terminal').textContent='';};$('exportCsvBtn').onclick=exportCsv;
   $('themeBtn').onclick=()=>{const root=document.documentElement;const next=root.dataset.theme==='dark'?'light':'dark';if(next==='dark')root.dataset.theme='dark';else delete root.dataset.theme;localStorage.setItem('simcorr_theme',next);refreshChartsForTheme();};

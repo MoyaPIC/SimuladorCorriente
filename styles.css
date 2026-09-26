@@ -24,3 +24,104 @@ button,input,select,textarea{font:inherit}.topbar{position:sticky;top:0;z-index:
 /* Memoria del instrumento */
 .card-subtitle{margin:5px 0 0;color:var(--muted);font-size:11px;line-height:1.45}.profile-title-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.profile-meta{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 12px}.profile-meta span{padding:6px 9px;border-radius:999px;background:var(--surface);border:1px solid var(--border);font-size:10px;color:var(--muted);font-weight:750}.device-slot-grid{display:grid;gap:10px;margin-top:14px}.device-slot{display:grid;grid-template-columns:54px minmax(0,1fr);gap:11px;align-items:center;padding:12px;border:1px solid var(--border);border-radius:13px;background:var(--surface-alt)}.device-slot.occupied{border-left:4px solid var(--brand)}.slot-number{font-size:9px;color:var(--muted);text-align:center;letter-spacing:.08em}.slot-number b{display:block;font-size:20px;color:var(--text);letter-spacing:0}.slot-info{min-width:0}.slot-info strong,.slot-info small{display:block}.slot-info strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.slot-info small{margin-top:4px;color:var(--muted);font-size:10px}.slot-actions{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px}.slot-empty-badge{grid-column:1/-1;text-align:center;color:var(--muted);font-size:11px;padding:7px;border:1px dashed var(--border);border-radius:9px}.device-dialog{border:0;padding:0;background:transparent;color:var(--text);width:min(92vw,520px);max-width:520px}.device-dialog::backdrop{background:rgba(0,0,0,.55);backdrop-filter:blur(3px)}.device-dialog-card{background:var(--surface);border:1px solid var(--border);border-top:4px solid var(--brand);border-radius:17px;padding:18px;box-shadow:0 24px 70px rgba(0,0,0,.32)}.dialog-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:15px}.dialog-head h2{margin:4px 0 0}.dialog-close{font-size:24px}.dialog-field{display:flex;flex-direction:column;gap:8px;margin-top:14px;color:var(--muted);font-size:11px;font-weight:800}.slot-warning{margin-top:12px;padding:11px 12px;border-radius:11px;font-size:11px;line-height:1.5}.slot-warning.ok{background:color-mix(in srgb,var(--success) 10%,var(--surface-alt));border:1px solid color-mix(in srgb,var(--success) 35%,var(--border));color:var(--success)}.slot-warning.danger{background:var(--brand-soft);border:1px solid color-mix(in srgb,var(--brand) 35%,var(--border));color:var(--brand)}.upload-progress{margin-top:14px;padding:12px;background:var(--surface-alt);border:1px solid var(--border);border-radius:12px}.upload-progress>span{font-size:11px;color:var(--muted)}.dialog-actions{margin-top:16px}
 @media(min-width:600px){.device-slot-grid{grid-template-columns:1fr 1fr}.device-slot{grid-template-columns:54px minmax(0,1fr)}.slot-actions{grid-column:1/-1}}
+
+
+/* ========================================================================== */
+/* Ajustes visuales v1.4.2                                                    */
+/* ========================================================================== */
+
+/* Unidades visibles y con espacio suficiente dentro de los controles. */
+.field-card{
+  padding:14px 16px;
+  overflow:hidden;
+  min-width:0;
+}
+.field-card>span{
+  margin-bottom:10px;
+}
+.field-with-unit{
+  grid-template-columns:minmax(0,1fr) minmax(50px,auto);
+  gap:14px;
+  width:100%;
+}
+.field-with-unit input{
+  min-width:0;
+  width:100%;
+  font-size:18px;
+}
+.field-with-unit small{
+  min-width:50px;
+  padding:0 4px;
+  text-align:center;
+  color:var(--text);
+  font-size:13px;
+  font-weight:850;
+  opacity:.92;
+  white-space:nowrap;
+}
+
+/* Más aire entre controles, resúmenes y acciones. */
+.form-grid{
+  gap:16px;
+  align-items:start;
+}
+.form-grid>label{
+  min-width:0;
+}
+.button-grid{
+  gap:14px;
+  margin-top:18px;
+}
+.cal-info{
+  margin-top:18px;
+  margin-bottom:18px;
+}
+.summary{
+  position:relative;
+}
+.card-head{
+  flex-wrap:wrap;
+}
+#tab-calibration .form-grid{
+  margin-bottom:4px;
+}
+
+/* Los gráficos reservan espacio real para las etiquetas de los ejes. */
+.preview-chart-wrap{
+  height:260px;
+}
+.ramp-chart-wrap{
+  height:330px;
+}
+.preview-chart-wrap canvas,
+.ramp-chart-wrap canvas{
+  display:block;
+}
+
+/* Evita dos columnas demasiado estrechas y solapamientos. */
+@media(max-width:759px){
+  .form-grid,
+  .ramp-field-grid{
+    grid-template-columns:1fr !important;
+  }
+  .button-grid.two,
+  .button-grid.three{
+    grid-template-columns:1fr !important;
+  }
+  .field-with-unit{
+    grid-template-columns:minmax(0,1fr) 58px;
+  }
+  .preview-chart-wrap{
+    height:245px;
+  }
+  .ramp-chart-wrap{
+    height:300px;
+  }
+}
+
+@media(min-width:760px){
+  .form-grid,
+  .ramp-field-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}

@@ -7,7 +7,7 @@
   <meta name="description" content="Simulink - simulación y medición 4-20 mA mediante Web Serial y HC-05">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.10.0">
+  <link rel="stylesheet" href="styles.css?v=1.10.1">
   <title>Simulink · 4–20 mA</title>
 </head>
 <body>
@@ -15,7 +15,7 @@
   <div class="app-splash-card">
     <div class="splash-brand">UconnectME</div>
     <div class="splash-division">Instrumentación</div>
-    <div class="splash-product">Simulink <span>v1.10.0</span></div>
+    <div class="splash-product">Simulink <span>v1.10.1</span></div>
     <div class="splash-loader" aria-hidden="true"><i id="splashProgressBar"></i></div>
     <div id="splashProgressText" class="splash-progress-text">Iniciando instrumento… 0%</div>
   </div>
@@ -334,7 +334,7 @@
           <div>
             <span class="label">INSTRUMENTO</span>
             <h3>Memoria del equipo</h3>
-            <p>16 espacios almacenados físicamente en la EEPROM 24C512.</p>
+            <p>16 espacios almacenados físicamente en la Memoria del equipo.</p>
           </div>
           <button id="refreshDeviceProfilesBtn" class="btn small" type="button">Actualizar</button>
         </div>
@@ -419,7 +419,7 @@
       <button id="startSimulationBtn" class="btn wide">Iniciar simulación</button>
       <p id="modeStatus" class="hint">Web Serial listo. El HC-05 debe estar vinculado previamente en Android.</p>
       <div id="serialDiag" class="summary compact">Diagnóstico: esperando selección del puerto.</div>
-      <div id="connectionMemorySummary" class="summary connection-memory-summary"><b>EEPROM 24C512</b><br>Los slots se leerán automáticamente al conectar.</div>
+      <div id="connectionMemorySummary" class="summary connection-memory-summary"><b>Memoria del equipo</b><br>Los slots se leerán automáticamente al conectar.</div>
       <div class="summary" id="scaleSummary"></div>
     </article>
 
@@ -459,6 +459,6 @@
 
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js" defer></script>
-<script src="app.js?v=1.10.0" defer></script>
+<script src="app.js?v=1.10.1" defer></script>
 </body>
 </html>

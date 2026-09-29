@@ -35,8 +35,9 @@
 
   5) Buzzer activo
      - Conectado a D6.
-     - Solo debe sonar cuando se detecta una desconexión de carga DESPUÉS
-       de que el sistema haya confirmado una carga conectada durante 5 s.
+     - Alarma continua por lazo abierto una vez armada la supervisión.
+     - Pitido corto de confirmación cuando una calibración/configuración
+       se almacena correctamente.
 
   6) Entrada de error de lazo
      - Conectada a D8.
@@ -68,8 +69,16 @@
     PROFILE:DELETE:<slot>
     PROFILE:LIST
 
+    CAL:READ
+    CAL:SAVE
+    CAL:OUT:TYPE:<type>
+    CAL:OUT:RANGE:<min>:<max>:<unit>
+    CAL:OUT:CURRENT:4:20
     CAL:OUT:POINTS:<medido_4mA>:<medido_20mA>
     CAL:OUT:CODES:<codigo_4mA>:<codigo_20mA>
+    CAL:IN:TYPE:<type>
+    CAL:IN:RANGE:<min>:<max>:<unit>
+    CAL:IN:CURRENT:4:20
     CAL:IN:POINTS:<indicado_4mA>:<indicado_20mA>
     CAL:IN:RAW:<raw_4mA>:<raw_20mA>
     CAL:IN:CAPTURE:4
@@ -138,7 +147,8 @@ static const uint8_t EEPROM_ADDR  = 0x50;
 // ============================================================================
 // USB_BAUD se usa solo para monitor serie/diagnóstico.
 // BT_BAUD debe coincidir con la velocidad configurada en el HC-05.
-static const char FIRMWARE_VERSION[] = "1.1.0";
+static const char FIRMWARE_VERSION[] = "1.2.0";
+static const uint8_t PROTOCOL_VERSION = 2;
 static const uint32_t USB_BAUD = 115200UL;
 static const uint32_t BT_BAUD  = 9600UL;
 
@@ -188,7 +198,9 @@ static const uint16_t PROFILE_MAX_POINTS =
 // Valores "magic" permiten distinguir datos válidos de memoria vacía/corrupta.
 // CONFIG_VER y PROFILE_VER permiten migrar formatos en versiones futuras.
 static const uint16_t CONFIG_MAGIC  = 0xC55A;
-static const uint8_t  CONFIG_VER    = 1;
+static const uint8_t  CONFIG_VER_LEGACY = 1;
+static const uint8_t  CONFIG_VER    = 2;
+static const uint8_t  CONFIG_SIZE_V2 = 64;
 static const uint16_t PROFILE_MAGIC = 0xA55A;
 static const uint8_t  PROFILE_VER   = 1;
 
@@ -200,6 +212,22 @@ static const uint8_t PROFILE_TYPE_TRIANGLE = 2;
 static const uint8_t PROFILE_TYPE_STEPS    = 3;
 static const uint8_t PROFILE_TYPE_CYCLE    = 4;
 static const uint8_t PROFILE_TYPE_CUSTOM   = 5;
+
+// Tipos de magnitud compartidos con la PWA.
+// Estos códigos se almacenan en EEPROM para reconstruir la configuración
+// desde cualquier teléfono que se conecte al instrumento.
+static const uint8_t ENG_TYPE_CURRENT     = 0;
+static const uint8_t ENG_TYPE_TEMPERATURE = 1;
+static const uint8_t ENG_TYPE_PRESSURE    = 2;
+static const uint8_t ENG_TYPE_FLOW        = 3;
+static const uint8_t ENG_TYPE_ANGLE       = 4;
+static const uint8_t ENG_TYPE_VOLTAGE     = 5;
+static const uint8_t ENG_TYPE_CUSTOM      = 6;
+
+static const uint8_t ENG_VALID_OUT = 0x01;
+static const uint8_t ENG_VALID_IN  = 0x02;
+static const uint8_t ENG_UNIT_SIZE = 8;  // 7 bytes útiles + NUL
+
 
 // ============================================================================
 // 7. OBJETOS DE COMUNICACIÓN
@@ -217,6 +245,15 @@ struct CalibrationConfig {
   uint16_t dacCode20;
   int16_t adcRaw4;
   int16_t adcRaw20;
+};
+
+// Escala de ingeniería persistente.
+// minMilli/maxMilli usan milésimas para evitar guardar float directamente.
+struct EngineeringScaleConfig {
+  uint8_t type;
+  int32_t minMilli;
+  int32_t maxMilli;
+  char unit[ENG_UNIT_SIZE];
 };
 
 // Cabecera persistente de cada perfil.
@@ -249,6 +286,10 @@ CalibrationConfig cal = {
   5312,
   26560
 };
+
+EngineeringScaleConfig outEng = { ENG_TYPE_CURRENT, 0L, 100000L, "A" };
+EngineeringScaleConfig inEng  = { ENG_TYPE_CURRENT, 0L, 100000L, "A" };
+uint8_t engineeringValidFlags = 0;
 
 // Banderas de presencia de periféricos detectados durante setup().
 bool hasMcp4725 = false;
@@ -345,6 +386,28 @@ static void writeI16LE(uint8_t *p, int16_t v) {
   writeU16LE(p, (uint16_t)v);
 }
 
+static uint32_t readU32LE(const uint8_t *p) {
+  return (uint32_t)p[0] |
+         ((uint32_t)p[1] << 8) |
+         ((uint32_t)p[2] << 16) |
+         ((uint32_t)p[3] << 24);
+}
+
+static int32_t readI32LE(const uint8_t *p) {
+  return (int32_t)readU32LE(p);
+}
+
+static void writeU32LE(uint8_t *p, uint32_t v) {
+  p[0] = (uint8_t)(v & 0xFF);
+  p[1] = (uint8_t)((v >> 8) & 0xFF);
+  p[2] = (uint8_t)((v >> 16) & 0xFF);
+  p[3] = (uint8_t)((v >> 24) & 0xFF);
+}
+
+static void writeI32LE(uint8_t *p, int32_t v) {
+  writeU32LE(p, (uint32_t)v);
+}
+
 // CRC16 Modbus (polinomio 0xA001).
 // Se usa para detectar perfiles incompletos o datos corruptos en EEPROM.
 static uint16_t crc16Update(uint16_t crc, uint8_t data) {
@@ -388,6 +451,51 @@ static const __FlashStringHelper *profileTypeToText(uint8_t type) {
     case PROFILE_TYPE_CUSTOM:   return F("custom");
     default:                    return F("unknown");
   }
+}
+
+static uint8_t engineeringTypeFromText(const char *type) {
+  if (!type) return ENG_TYPE_CUSTOM;
+  if (!strcmp(type, "current")) return ENG_TYPE_CURRENT;
+  if (!strcmp(type, "temperature")) return ENG_TYPE_TEMPERATURE;
+  if (!strcmp(type, "pressure")) return ENG_TYPE_PRESSURE;
+  if (!strcmp(type, "flow")) return ENG_TYPE_FLOW;
+  if (!strcmp(type, "angle")) return ENG_TYPE_ANGLE;
+  if (!strcmp(type, "voltage")) return ENG_TYPE_VOLTAGE;
+  return ENG_TYPE_CUSTOM;
+}
+
+static const __FlashStringHelper *engineeringTypeToText(uint8_t type) {
+  switch (type) {
+    case ENG_TYPE_CURRENT:     return F("current");
+    case ENG_TYPE_TEMPERATURE: return F("temperature");
+    case ENG_TYPE_PRESSURE:    return F("pressure");
+    case ENG_TYPE_FLOW:        return F("flow");
+    case ENG_TYPE_ANGLE:       return F("angle");
+    case ENG_TYPE_VOLTAGE:     return F("voltage");
+    default:                   return F("custom");
+  }
+}
+
+static void copyUnit(char *dst, const char *src) {
+  if (!src || !src[0]) src = "u";
+  strncpy(dst, src, ENG_UNIT_SIZE - 1);
+  dst[ENG_UNIT_SIZE - 1] = 0;
+}
+
+static bool engineeringRangeToMilli(const char *minS, const char *maxS,
+                                    int32_t &minMilli, int32_t &maxMilli) {
+  if (!minS || !maxS) return false;
+  float mn = atof(minS);
+  float mx = atof(maxS);
+  if (mx <= mn) return false;
+
+  // Evita overflow al convertir a milésimas.
+  if (mn < -2000000.0f || mn > 2000000.0f ||
+      mx < -2000000.0f || mx > 2000000.0f) return false;
+
+  minMilli = (int32_t)lroundf(mn * 1000.0f);
+  maxMilli = (int32_t)lroundf(mx * 1000.0f);
+  return maxMilli > minMilli;
 }
 
 // ============================================================================
@@ -599,40 +707,76 @@ static bool eepromReadBlock(uint16_t address, uint8_t *data, uint16_t len) {
 }
 
 // ============================================================================
-// 14. ALMACENAMIENTO PERSISTENTE DE CALIBRACIÓN
+// 14. CONFIGURACIÓN PERSISTENTE: CALIBRACIÓN + ESCALAS DE INGENIERÍA
 // ============================================================================
-// La calibración se guarda con magic, versión y CRC.
-// Si cualquiera de esos controles falla al arrancar, se usan los valores
-// predeterminados y se crea una nueva estructura válida en la EEPROM.
-// Serializa la calibración a un formato fijo de 16 bytes y calcula CRC16.
+// Formato v2 (64 bytes):
+//   0..1   magic
+//   2      versión
+//   3      flags de escalas válidas
+//   4..11  calibración eléctrica DAC/ADC
+//   12     tipo salida
+//   13     tipo entrada
+//   16..31 rangos de ingeniería en milésimas
+//   32..39 unidad salida
+//   40..47 unidad entrada
+//   62..63 CRC16 sobre bytes 0..61
+//
+// El loader también entiende el antiguo formato v1 de 16 bytes para no perder
+// la calibración eléctrica ya hecha. En ese caso las escalas quedan marcadas
+// como pendientes y la PWA las sincroniza en la primera conexión.
+
+static bool calibrationValuesValid(const CalibrationConfig &c) {
+  if (c.dacCode4 > 4095 || c.dacCode20 > 4095) return false;
+  if (c.dacCode4 == c.dacCode20) return false;
+  if (c.adcRaw4 == c.adcRaw20) return false;
+  return true;
+}
+
+static bool engineeringScaleValid(const EngineeringScaleConfig &s) {
+  if (s.type > ENG_TYPE_CUSTOM) return false;
+  if (s.maxMilli <= s.minMilli) return false;
+  if (!s.unit[0]) return false;
+  return true;
+}
+
 static bool saveCalibration() {
   if (!has24c512) return false;
 
-  uint8_t b[16];
+  uint8_t b[CONFIG_SIZE_V2];
   memset(b, 0, sizeof(b));
+
   writeU16LE(&b[0], CONFIG_MAGIC);
   b[2] = CONFIG_VER;
-  b[3] = 0;
+  b[3] = engineeringValidFlags & (ENG_VALID_OUT | ENG_VALID_IN);
+
   writeU16LE(&b[4], cal.dacCode4);
   writeU16LE(&b[6], cal.dacCode20);
   writeI16LE(&b[8], cal.adcRaw4);
   writeI16LE(&b[10], cal.adcRaw20);
 
-  uint16_t crc = crc16Buffer(b, 12);
-  writeU16LE(&b[12], crc);
+  b[12] = outEng.type;
+  b[13] = inEng.type;
+
+  writeI32LE(&b[16], outEng.minMilli);
+  writeI32LE(&b[20], outEng.maxMilli);
+  writeI32LE(&b[24], inEng.minMilli);
+  writeI32LE(&b[28], inEng.maxMilli);
+
+  for (uint8_t i = 0; i < ENG_UNIT_SIZE; i++) {
+    b[32 + i] = (uint8_t)outEng.unit[i];
+    b[40 + i] = (uint8_t)inEng.unit[i];
+  }
+
+  uint16_t crc = crc16Buffer(b, 62);
+  writeU16LE(&b[62], crc);
 
   return eepromWriteBlock(EEPROM_CONFIG_BASE, b, sizeof(b));
 }
 
-// Recupera y valida la calibración almacenada.
-static bool loadCalibration() {
-  if (!has24c512) return false;
-
+static bool loadCalibrationV1() {
   uint8_t b[16];
   if (!eepromReadBlock(EEPROM_CONFIG_BASE, b, sizeof(b))) return false;
-
-  if (readU16LE(&b[0]) != CONFIG_MAGIC) return false;
-  if (b[2] != CONFIG_VER) return false;
+  if (readU16LE(&b[0]) != CONFIG_MAGIC || b[2] != CONFIG_VER_LEGACY) return false;
 
   uint16_t storedCrc = readU16LE(&b[12]);
   uint16_t calcCrc = crc16Buffer(b, 12);
@@ -643,13 +787,81 @@ static bool loadCalibration() {
   tmp.dacCode20 = readU16LE(&b[6]);
   tmp.adcRaw4 = readI16LE(&b[8]);
   tmp.adcRaw20 = readI16LE(&b[10]);
-
-  if (tmp.dacCode4 > 4095 || tmp.dacCode20 > 4095) return false;
-  if (tmp.dacCode4 == tmp.dacCode20) return false;
-  if (tmp.adcRaw4 == tmp.adcRaw20) return false;
+  if (!calibrationValuesValid(tmp)) return false;
 
   cal = tmp;
+
+  // No inventamos las escalas de ingeniería antiguas. La PWA actual las
+  // enviará y persistirá con CAL:SAVE en la primera conexión.
+  outEng = { ENG_TYPE_CURRENT, 0L, 100000L, "A" };
+  inEng  = { ENG_TYPE_CURRENT, 0L, 100000L, "A" };
+  engineeringValidFlags = 0;
   return true;
+}
+
+static bool loadCalibrationV2() {
+  uint8_t b[CONFIG_SIZE_V2];
+  if (!eepromReadBlock(EEPROM_CONFIG_BASE, b, sizeof(b))) return false;
+  if (readU16LE(&b[0]) != CONFIG_MAGIC || b[2] != CONFIG_VER) return false;
+
+  uint16_t storedCrc = readU16LE(&b[62]);
+  uint16_t calcCrc = crc16Buffer(b, 62);
+  if (storedCrc != calcCrc) return false;
+
+  CalibrationConfig tmp;
+  tmp.dacCode4 = readU16LE(&b[4]);
+  tmp.dacCode20 = readU16LE(&b[6]);
+  tmp.adcRaw4 = readI16LE(&b[8]);
+  tmp.adcRaw20 = readI16LE(&b[10]);
+  if (!calibrationValuesValid(tmp)) return false;
+
+  EngineeringScaleConfig outTmp;
+  EngineeringScaleConfig inTmp;
+  memset(&outTmp, 0, sizeof(outTmp));
+  memset(&inTmp, 0, sizeof(inTmp));
+
+  outTmp.type = b[12];
+  inTmp.type = b[13];
+  outTmp.minMilli = readI32LE(&b[16]);
+  outTmp.maxMilli = readI32LE(&b[20]);
+  inTmp.minMilli = readI32LE(&b[24]);
+  inTmp.maxMilli = readI32LE(&b[28]);
+
+  for (uint8_t i = 0; i < ENG_UNIT_SIZE; i++) {
+    outTmp.unit[i] = (char)b[32 + i];
+    inTmp.unit[i] = (char)b[40 + i];
+  }
+  outTmp.unit[ENG_UNIT_SIZE - 1] = 0;
+  inTmp.unit[ENG_UNIT_SIZE - 1] = 0;
+
+  cal = tmp;
+  engineeringValidFlags = b[3] & (ENG_VALID_OUT | ENG_VALID_IN);
+
+  if ((engineeringValidFlags & ENG_VALID_OUT) && engineeringScaleValid(outTmp)) {
+    outEng = outTmp;
+  } else {
+    engineeringValidFlags &= ~ENG_VALID_OUT;
+  }
+
+  if ((engineeringValidFlags & ENG_VALID_IN) && engineeringScaleValid(inTmp)) {
+    inEng = inTmp;
+  } else {
+    engineeringValidFlags &= ~ENG_VALID_IN;
+  }
+
+  return true;
+}
+
+static bool loadCalibration() {
+  if (!has24c512) return false;
+
+  uint8_t head[4];
+  if (!eepromReadBlock(EEPROM_CONFIG_BASE, head, sizeof(head))) return false;
+  if (readU16LE(&head[0]) != CONFIG_MAGIC) return false;
+
+  if (head[2] == CONFIG_VER) return loadCalibrationV2();
+  if (head[2] == CONFIG_VER_LEGACY) return loadCalibrationV1();
+  return false;
 }
 
 // ============================================================================
@@ -1001,7 +1213,42 @@ static void replyError(Stream &s, const __FlashStringHelper *msg) {
 }
 
 // Envía calibraciones y capacidad de perfiles para diagnóstico.
+static void printMilli3(Stream &s, int32_t milli) {
+  printFloat3(s, (float)milli / 1000.0f);
+}
+
+static void printEngineeringConfig(Stream &s, const __FlashStringHelper *channel,
+                                   const EngineeringScaleConfig &cfg,
+                                   bool valid) {
+  s.print(F("CAL:"));
+  s.print(channel);
+  s.print(F(":VALID:"));
+  s.println(valid ? 1 : 0);
+
+  if (!valid) return;
+
+  s.print(F("CAL:"));
+  s.print(channel);
+  s.print(F(":CFG:"));
+  s.print(engineeringTypeToText(cfg.type));
+  s.print(':');
+  printMilli3(s, cfg.minMilli);
+  s.print(':');
+  printMilli3(s, cfg.maxMilli);
+  s.print(':');
+  s.println(cfg.unit);
+}
+
+// Envía calibración eléctrica y escalas persistentes.
 static void printCalibration(Stream &s) {
+  s.print(F("CAL:PROTO:"));
+  s.println(PROTOCOL_VERSION);
+
+  printEngineeringConfig(s, F("OUT"), outEng,
+                         (engineeringValidFlags & ENG_VALID_OUT) != 0);
+  printEngineeringConfig(s, F("IN"), inEng,
+                         (engineeringValidFlags & ENG_VALID_IN) != 0);
+
   s.print(F("CAL:OUT:CODES:"));
   s.print(cal.dacCode4);
   s.print(':');
@@ -1352,18 +1599,90 @@ static void handleCalibrationCommand(Stream &src, char *savePtr) {
     return;
   }
 
+  // Persiste las escalas de ingeniería recibidas sin alterar la calibración
+  // eléctrica. Se usa automáticamente al migrar desde firmware v1.1.x.
+  if (!strcmp(channel, "SAVE")) {
+    if (!saveCalibration()) {
+      replyError(src, F("EEPROM_WRITE"));
+      return;
+    }
+    buzzerConfirmCalibration();
+    replyOK(src);
+    return;
+  }
+
+  bool isOut = !strcmp(channel, "OUT");
+  bool isIn  = !strcmp(channel, "IN");
+  if (!isOut && !isIn) {
+    replyError(src, F("CAL_CHANNEL"));
+    return;
+  }
+
+  EngineeringScaleConfig &eng = isOut ? outEng : inEng;
+  uint8_t validMask = isOut ? ENG_VALID_OUT : ENG_VALID_IN;
+
   char *op = strtok_r(NULL, ":", &savePtr);
   if (!op) {
     replyError(src, F("CAL_CMD"));
     return;
   }
 
-  if (!strcmp(op, "TYPE") || !strcmp(op, "RANGE") || !strcmp(op, "CURRENT")) {
+  // CAL:<OUT|IN>:TYPE:<type>
+  if (!strcmp(op, "TYPE")) {
+    char *typeS = strtok_r(NULL, ":", &savePtr);
+    if (!typeS) {
+      replyError(src, F("CAL_TYPE_ARGS"));
+      return;
+    }
+    eng.type = engineeringTypeFromText(typeS);
     replyOK(src);
     return;
   }
 
-  if (!strcmp(channel, "OUT")) {
+  // CAL:<OUT|IN>:RANGE:<min>:<max>:<unit>
+  if (!strcmp(op, "RANGE")) {
+    char *minS = strtok_r(NULL, ":", &savePtr);
+    char *maxS = strtok_r(NULL, ":", &savePtr);
+    char *unitS = strtok_r(NULL, ":", &savePtr);
+    int32_t mn, mx;
+
+    if (!minS || !maxS || !unitS ||
+        !engineeringRangeToMilli(minS, maxS, mn, mx)) {
+      replyError(src, F("CAL_RANGE_ARGS"));
+      return;
+    }
+
+    eng.minMilli = mn;
+    eng.maxMilli = mx;
+    copyUnit(eng.unit, unitS);
+    engineeringValidFlags |= validMask;
+    replyOK(src);
+    return;
+  }
+
+  // El instrumento opera físicamente a 4-20 mA. La PWA envía estos límites
+  // para mantener el contrato de protocolo, pero no son configurables.
+  if (!strcmp(op, "CURRENT")) {
+    char *minS = strtok_r(NULL, ":", &savePtr);
+    char *maxS = strtok_r(NULL, ":", &savePtr);
+    if (!minS || !maxS) {
+      replyError(src, F("CAL_CURRENT_ARGS"));
+      return;
+    }
+
+    float mn = atof(minS);
+    float mx = atof(maxS);
+    if (fabs(mn - CURRENT_MIN_MA) > 0.01f ||
+        fabs(mx - CURRENT_MAX_MA) > 0.01f) {
+      replyError(src, F("CAL_CURRENT_FIXED_4_20"));
+      return;
+    }
+
+    replyOK(src);
+    return;
+  }
+
+  if (isOut) {
     if (!strcmp(op, "POINTS")) {
       char *m4S = strtok_r(NULL, ":", &savePtr);
       char *m20S = strtok_r(NULL, ":", &savePtr);
@@ -1410,7 +1729,7 @@ static void handleCalibrationCommand(Stream &src, char *savePtr) {
     }
   }
 
-  if (!strcmp(channel, "IN")) {
+  if (isIn) {
     if (!strcmp(op, "POINTS")) {
       char *m4S = strtok_r(NULL, ":", &savePtr);
       char *m20S = strtok_r(NULL, ":", &savePtr);
@@ -1599,6 +1918,8 @@ static void processCommand(Stream &src, const char *line) {
   if (!strcmp(root, "INFO")) {
     src.print(F("INFO:FW="));
     src.print(FIRMWARE_VERSION);
+    src.print(F(":PROTO="));
+    src.print(PROTOCOL_VERSION);
     src.print(F(":MCP4725="));
     src.print(hasMcp4725 ? 1 : 0);
     src.print(F(":ADS1115="));
@@ -1675,10 +1996,13 @@ void setup() {
 
   if (hasAds1115) ads1115Configure();
 
-  // Si existe calibración válida se recupera; de lo contrario se guardan los
-  // valores iniciales para dejar una estructura consistente en EEPROM.
+  // Recupera configuración v2 o migra automáticamente la calibración
+  // eléctrica del formato v1. Las escalas antiguas se sincronizan desde la PWA.
   if (has24c512) {
-    if (!loadCalibration()) saveCalibration();
+    if (!loadCalibration()) {
+      engineeringValidFlags = 0;
+      saveCalibration();
+    }
   }
 
   // Estado inicial de D8:

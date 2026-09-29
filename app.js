@@ -97,11 +97,11 @@ function handleLine(line){
     renderDeviceProfiles();
     return;
   }
-  if(line==='ERR:EEPROM_OFFLINE'&&state.awaitingProfileList){
+  if((line==='ERR:EEPROM_OFFLINE'||line==='ERR:MEMORY_OFFLINE')&&state.awaitingProfileList){
     state.awaitingProfileList=false;
     const mem=$('connectionMemorySummary');
-    if(mem)mem.innerHTML='<b>EEPROM 24C512 no detectada</b><br>No fue posible leer los ensayos almacenados.';
-    $('deviceMemoryStatus').innerHTML='<b>EEPROM 24C512 no detectada.</b>';
+    if(mem)mem.innerHTML='<b>Memoria del equipo no detectada</b><br>No fue posible leer los ensayos almacenados.';
+    $('deviceMemoryStatus').innerHTML='<b>Memoria del equipo no detectada.</b>';
     return;
   }
   if(line==='OK'&&state.awaitingProfileList){
@@ -963,11 +963,11 @@ function updateConnectionMemorySummary(){
   if(!el)return;
   const occupied=state.deviceProfiles.filter(Boolean);
   if(!occupied.length){
-    el.innerHTML='<b>EEPROM 24C512: 0/16 slots ocupados</b><br>No hay ensayos almacenados en el instrumento.';
+    el.innerHTML='<b>Memoria del equipo: 0/16 slots ocupados</b><br>No hay ensayos almacenados en el instrumento.';
     return;
   }
   const details=occupied.map(p=>'Slot '+p.slot+': '+profileTypeLabel(p.type)).join(' · ');
-  el.innerHTML='<b>EEPROM 24C512: '+occupied.length+'/16 slots ocupados</b><br>'+escapeHtml(details);
+  el.innerHTML='<b>Memoria del equipo: '+occupied.length+'/16 slots ocupados</b><br>'+escapeHtml(details);
 }
 function renderDeviceProfiles(){
   const box=$('deviceProfileList');if(!box)return;
@@ -989,7 +989,7 @@ async function requestDeviceProfiles(){
   state.awaitingProfileList=true;
   $('deviceMemoryStatus').textContent='Leyendo memoria del instrumento...';
   const mem=$('connectionMemorySummary');
-  if(mem)mem.innerHTML='<b>EEPROM 24C512</b><br>Leyendo slots almacenados...';
+  if(mem)mem.innerHTML='<b>Memoria del equipo</b><br>Leyendo ensayos almacenados...';
   renderDeviceProfiles();
   await send('PROFILE:LIST');
 }
@@ -1218,9 +1218,19 @@ function runStartupSplash(){
     if(pct<100){
       requestAnimationFrame(tick);
     }else{
-      setTimeout(()=>{
+      setTimeout(async()=>{
         splash.classList.add('hide');
-        setTimeout(()=>splash.remove(),420);
+
+        // En PWA instalada puede funcionar inmediatamente. En una pestaña de
+        // Chrome la API puede requerir el primer toque; ese caso queda cubierto
+        // también por bindImmersiveMode().
+        await requestImmersiveMode();
+        updateLandscapeFallback();
+
+        setTimeout(()=>{
+          splash.remove();
+          updateLandscapeFallback();
+        },420);
       },180);
     }
   };
@@ -1228,8 +1238,18 @@ function runStartupSplash(){
 }
 
 function updateLandscapeFallback(){
+  const splash=$('splashScreen');
+
+  // La presentación inicial siempre se muestra centrada en el viewport real.
+  // La rotación de respaldo empieza recién cuando termina el splash.
+  if(splash && !splash.classList.contains('hide')){
+    document.documentElement.classList.remove('force-landscape');
+    return;
+  }
+
   const portrait=window.innerHeight>window.innerWidth;
   document.documentElement.classList.toggle('force-landscape',portrait);
+
   requestAnimationFrame(()=>{
     previewChart?.resize();
     rampLiveChart?.resize();
@@ -1238,34 +1258,49 @@ function updateLandscapeFallback(){
   });
 }
 
+async function lockLandscapeOrientation(){
+  if(!(screen.orientation&&typeof screen.orientation.lock==='function'))return false;
+  try{
+    await screen.orientation.lock('landscape-primary');
+    return true;
+  }catch(e){}
+  try{
+    await screen.orientation.lock('landscape');
+    return true;
+  }catch(e){}
+  return false;
+}
+
 async function requestImmersiveMode(){
-  try{
-    if(document.fullscreenElement==null && document.documentElement.requestFullscreen){
+  let fullscreen=document.fullscreenElement!=null;
+
+  if(!fullscreen && document.documentElement.requestFullscreen){
+    try{
       await document.documentElement.requestFullscreen({navigationUI:'hide'});
-    }
-  }catch(e){}
+      fullscreen=true;
+    }catch(e){}
+  }
 
-  let locked=false;
-  try{
-    if(screen.orientation&&typeof screen.orientation.lock==='function'){
-      try{
-        await screen.orientation.lock('landscape-primary');
-      }catch(e){
-        await screen.orientation.lock('landscape');
-      }
-      locked=true;
-    }
-  }catch(e){}
+  // El bloqueo suele ser aceptado una vez que fullscreen ya está activo.
+  let locked=await lockLandscapeOrientation();
 
-  // Si Android/Chrome no concede el bloqueo, forzamos igualmente una
-  // presentación horizontal rotando la superficie completa de la PWA.
-  setTimeout(updateLandscapeFallback,locked?120:0);
+  if(fullscreen && !locked){
+    await new Promise(r=>setTimeout(r,120));
+    locked=await lockLandscapeOrientation();
+  }
+
+  updateLandscapeFallback();
+  return fullscreen&&locked;
 }
 
 function bindImmersiveMode(){
   updateLandscapeFallback();
   window.addEventListener('resize',updateLandscapeFallback);
   window.addEventListener('orientationchange',()=>setTimeout(updateLandscapeFallback,120));
+  document.addEventListener('fullscreenchange',async()=>{
+    if(document.fullscreenElement)await lockLandscapeOrientation();
+    setTimeout(updateLandscapeFallback,100);
+  });
 
   // En una PWA instalada, el manifest solicita landscape-primary/fullscreen.
   // En navegador, el primer toque permite pedir Fullscreen + Orientation Lock.
@@ -1282,6 +1317,10 @@ function bindImmersiveMode(){
 function init(){
   runStartupSplash();
   bindImmersiveMode();
+
+  // Intento inmediato. En una PWA instalada suele entrar directamente en
+  // fullscreen/landscape; Chrome normal puede exigir el primer toque.
+  requestImmersiveMode();
   if(localStorage.getItem('simcorr_theme')==='dark')document.documentElement.dataset.theme='dark';
   loadLocal();populateTypeSelect('outSensorType');populateTypeSelect('inSensorType');fillScaleInputs('out',state.outScale);fillScaleInputs('in',state.inScale);renderPoints();renderProfiles();renderDeviceProfiles();bind();setRampPane('config');updateRampEditor();renderMain();
   const standalone=window.matchMedia?.('(display-mode: standalone)').matches===true || window.navigator.standalone===true;

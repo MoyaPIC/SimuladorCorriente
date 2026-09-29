@@ -793,8 +793,16 @@ static bool loadCalibrationV1() {
 
   // No inventamos las escalas de ingeniería antiguas. La PWA actual las
   // enviará y persistirá con CAL:SAVE en la primera conexión.
-  outEng = { ENG_TYPE_CURRENT, 0L, 100000L, "A" };
-  inEng  = { ENG_TYPE_CURRENT, 0L, 100000L, "A" };
+  outEng.type = ENG_TYPE_CURRENT;
+  outEng.minMilli = 0L;
+  outEng.maxMilli = 100000L;
+  copyUnit(outEng.unit, "A");
+
+  inEng.type = ENG_TYPE_CURRENT;
+  inEng.minMilli = 0L;
+  inEng.maxMilli = 100000L;
+  copyUnit(inEng.unit, "A");
+
   engineeringValidFlags = 0;
   return true;
 }

@@ -70,3 +70,26 @@ una calibración eléctrica se guarda correctamente en la 24C512. El envío
 normal desde la PWA genera un solo pitido al completar el comando final
 `CAL:*:POINTS`. La alarma de lazo abierto conserva prioridad y permanece
 continua mientras corresponda.
+
+
+## Firmware 1.2.0 / protocolo 2
+
+La configuración de ingeniería ahora forma parte de la memoria del instrumento.
+Además de la calibración eléctrica, se almacenan de forma persistente:
+
+- tipo de variable de salida y entrada;
+- unidad;
+- mínimo y máximo de ingeniería;
+- calibración DAC del MCP4725;
+- calibración RAW del ADS1115.
+
+Al conectar, la PWA ejecuta `CAL:READ` y reconstruye automáticamente las
+escalas guardadas. El comando `INFO` informa también `PROTO=2`.
+
+### Migración desde firmware 1.1.x
+
+El firmware 1.2.0 reconoce el antiguo bloque de calibración v1. La calibración
+eléctrica existente se conserva. Como ese formato no contenía las escalas de
+ingeniería, la primera conexión con la PWA v1.10.2 envía las escalas locales y
+las persiste con `CAL:SAVE`. Desde ese momento la configuración viaja con el
+instrumento y puede recuperarse desde otro teléfono.

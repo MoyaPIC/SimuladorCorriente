@@ -1550,3 +1550,82 @@ html.force-landscape .multipoint-builder{
 html.force-landscape .custom-editor-chart-wrap{
   height:min(52vw,340px)!important;
 }
+
+
+/* ========================================================================== */
+/* Immersive landscape fixes · v1.10.1                                        */
+/* ========================================================================== */
+
+/* El splash se centra siempre según el viewport físico; la rotación de
+   respaldo no se aplica hasta que termina la presentación. */
+.app-splash{
+  inset:0!important;
+  width:100vw!important;
+  height:100vh!important;
+  transform:none!important;
+}
+.app-splash-card{
+  position:relative;
+  left:auto!important;
+  top:auto!important;
+  transform:none!important;
+  margin:auto;
+}
+
+/* Si el navegador no permite Orientation Lock, el body se rota. Los dialog
+   nativos viven en el top-layer del navegador, por lo que deben rotarse
+   explícitamente también para no aparecer en vertical. */
+html.force-landscape .device-dialog[open]{
+  position:fixed!important;
+  inset:0!important;
+  width:100vw!important;
+  height:100vh!important;
+  max-width:none!important;
+  max-height:none!important;
+  margin:0!important;
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+  overflow:visible!important;
+  transform:none!important;
+}
+
+html.force-landscape .device-dialog[open] .device-dialog-card{
+  position:absolute!important;
+  top:50%!important;
+  left:50%!important;
+
+  /* Antes de rotar, el ancho corresponde a la altura visual y viceversa. */
+  width:min(86vw,620px)!important;
+  max-width:86vw!important;
+  max-height:86vh!important;
+  margin:0!important;
+  overflow:auto!important;
+
+  transform:translate(-50%,-50%) rotate(90deg)!important;
+  transform-origin:center center!important;
+}
+
+html.force-landscape .device-dialog::backdrop{
+  background:rgba(0,0,0,.72);
+  backdrop-filter:blur(4px);
+}
+
+/* En una pantalla física ya horizontal, el diálogo usa dimensiones normales. */
+html:not(.force-landscape) .device-dialog{
+  width:min(92vw,620px);
+}
+
+/* La superficie rotada usa todo el espacio disponible. */
+html.force-landscape body{
+  overscroll-behavior:none;
+}
+html.force-landscape .top-tabs{
+  position:sticky!important;
+  top:0!important;
+}
+
+/* Etiqueta amigable: nunca mostramos el modelo de EEPROM en la interfaz. */
+.connection-memory-summary b::after{
+  content:"";
+}

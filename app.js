@@ -31,7 +31,8 @@ const state={
   samples:[],chart:[],profiles:[],points:[{t:0,v:0}], rampTimer:null,rampPaused:false,rampState:null,
   installPrompt:null,rampTrace:[],
   deviceProfiles:Array(16).fill(null),deviceSlotNames:{},awaitingProfileList:false,pendingUploadIndex:null,pendingUploadProfile:null,
-  customAddMode:false,customSelectedIndex:0,customDraggingIndex:null,rampPane:'config'
+  customAddMode:false,customSelectedIndex:0,customDraggingIndex:null,rampPane:'config',
+  deviceProtocol:1,awaitingCalibrationRead:false,deviceOutConfigValid:null,deviceInConfigValid:null
 };
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function engToMa(v,s){const lo=Math.min(s.min,s.max),hi=Math.max(s.min,s.max),cv=clamp(Number(v),lo,hi);const span=s.max-s.min||1;const ma=s.currentMin+(cv-s.min)*(s.currentMax-s.currentMin)/span;return clamp(ma,4,20);}
@@ -70,6 +71,16 @@ function simulateCommand(line){
   if(line.startsWith('PROFILE:DELETE:')){const slot=Number(line.split(':')[2]);if(slot>=1&&slot<=16)state.deviceProfiles[slot-1]=null;return 'OK';}
   if(line.startsWith('PROFILE:RUN:'))return 'OK';
   if(line.startsWith('PROFILE:'))return 'OK';
+  if(line==='CAL:READ'){
+    return[
+      'CAL:PROTO:2',
+      'CAL:OUT:VALID:1',
+      `CAL:OUT:CFG:${state.outScale.type}:${state.outScale.min}:${state.outScale.max}:${protocolToken(state.outScale.unit)}`,
+      'CAL:IN:VALID:1',
+      `CAL:IN:CFG:${state.inScale.type}:${state.inScale.min}:${state.inScale.max}:${protocolToken(state.inScale.unit)}`,
+      'OK'
+    ];
+  }
   if(line.startsWith('CAL:'))return 'OK';
   return 'OK';
 }
@@ -83,6 +94,44 @@ function handleLine(line){
     renderMain();
     return;
   }
+  let m=line.match(/^CAL:PROTO:(\d+)/);
+  if(m){
+    state.deviceProtocol=Number(m[1])||1;
+    return;
+  }
+
+  m=line.match(/^CAL:(OUT|IN):VALID:([01])/);
+  if(m){
+    if(m[1]==='OUT')state.deviceOutConfigValid=m[2]==='1';
+    else state.deviceInConfigValid=m[2]==='1';
+    return;
+  }
+
+  m=line.match(/^CAL:(OUT|IN):CFG:([^:]+):([-+\d.]+):([-+\d.]+):(.*)$/);
+  if(m){
+    const prefix=m[1]==='OUT'?'out':'in';
+    const type=TYPES[m[2]]?m[2]:'custom';
+    const base=TYPES[type]||TYPES.custom;
+    const existing=prefix==='out'?state.outScale:state.inScale;
+    const scale={
+      ...existing,
+      type,
+      name:base.name,
+      unit:m[5]||base.unit,
+      min:Number(m[3]),
+      max:Number(m[4]),
+      currentMin:4,
+      currentMax:20
+    };
+    if(Number.isFinite(scale.min)&&Number.isFinite(scale.max)&&scale.max!==scale.min){
+      if(prefix==='out')state.outScale=scale;else state.inScale=scale;
+      fillScaleInputs(prefix,scale);
+      saveLocal();
+      renderMain();
+    }
+    return;
+  }
+
   const pm=line.match(/^PROFILE:(\d+):COUNT=(\d+):REP=(\d+)(?::TYPE=([a-z]+))?/);
   if(pm){
     const slot=Number(pm[1]);
@@ -104,6 +153,12 @@ function handleLine(line){
     $('deviceMemoryStatus').innerHTML='<b>Memoria del equipo no detectada.</b>';
     return;
   }
+  if(line==='OK'&&state.awaitingCalibrationRead){
+    state.awaitingCalibrationRead=false;
+    syncMissingEngineeringConfig();
+    return;
+  }
+
   if(line==='OK'&&state.awaitingProfileList){
     state.awaitingProfileList=false;
     renderDeviceProfiles();
@@ -154,6 +209,10 @@ async function connectSerial(){
 
     readLoop();
     await send('GET:STATUS');
+    state.awaitingCalibrationRead=true;
+    state.deviceOutConfigValid=null;
+    state.deviceInConfigValid=null;
+    await send('CAL:READ');
     await requestDeviceProfiles();
   }catch(e){
     log(e.message||String(e),'ERR');
@@ -219,7 +278,40 @@ function scaleFromInputs(prefix){const type=$(prefix+'SensorType').value;const b
 function setPresetFromType(prefix){const t=$(prefix+'SensorType').value,b=TYPES[t];$(prefix+'SensorUnit').value=b.unit;$(prefix+'SensorMin').value=b.min;$(prefix+'SensorMax').value=b.max;updateCalInfo(prefix,scaleFromInputs(prefix));}
 function updateCalInfo(prefix,s){const id=prefix==='out'?'outCalibrationInfo':'inCalibrationInfo';$(id).innerHTML=`<b>${s.name}</b>: ${fmt(s.min,2)} ${s.unit} = ${fmt(s.currentMin,1)} mA · ${fmt(s.max,2)} ${s.unit} = ${fmt(s.currentMax,1)} mA<br>Punto medio: ${fmt((s.min+s.max)/2,2)} ${s.unit} = ${fmt((s.currentMin+s.currentMax)/2,1)} mA`;}
 function applyScale(prefix){const s=scaleFromInputs(prefix);if(!Number.isFinite(s.min)||!Number.isFinite(s.max)||s.max===s.min){alert('El rango mínimo y máximo debe ser válido.');return;}if(prefix==='out')state.outScale=s;else state.inScale=s;saveLocal();renderMain();updateCalInfo(prefix,s);}
-async function sendCalibration(prefix){applyScale(prefix);const s=prefix==='out'?state.outScale:state.inScale;const ch=prefix==='out'?'OUT':'IN';await send(`CAL:${ch}:TYPE:${s.type}`);await send(`CAL:${ch}:RANGE:${s.min}:${s.max}:${s.unit}`);await send(`CAL:${ch}:CURRENT:${s.currentMin}:${s.currentMax}`);await send(`CAL:${ch}:POINTS:${s.measuredLow}:${s.measuredHigh}`);}
+function protocolToken(value,maxLen=7){
+  return String(value??'u').replace(/[:\r\n]/g,'/').slice(0,maxLen)||'u';
+}
+async function sendEngineeringScale(prefix){
+  const s=prefix==='out'?state.outScale:state.inScale;
+  const ch=prefix==='out'?'OUT':'IN';
+  await send(`CAL:${ch}:TYPE:${s.type}`);
+  await send(`CAL:${ch}:RANGE:${s.min}:${s.max}:${protocolToken(s.unit)}`);
+  await send(`CAL:${ch}:CURRENT:${s.currentMin}:${s.currentMax}`);
+}
+async function sendCalibration(prefix){
+  applyScale(prefix);
+  const s=prefix==='out'?state.outScale:state.inScale;
+  const ch=prefix==='out'?'OUT':'IN';
+  await sendEngineeringScale(prefix);
+  await send(`CAL:${ch}:POINTS:${s.measuredLow}:${s.measuredHigh}`);
+}
+async function syncMissingEngineeringConfig(){
+  let changed=false;
+  if(state.deviceOutConfigValid===false){
+    await sendEngineeringScale('out');
+    changed=true;
+  }
+  if(state.deviceInConfigValid===false){
+    await sendEngineeringScale('in');
+    changed=true;
+  }
+  if(changed){
+    await send('CAL:SAVE');
+    state.deviceOutConfigValid=true;
+    state.deviceInConfigValid=true;
+    setSerialDiag('configuración del instrumento migrada y sincronizada.');
+  }
+}
 
 function chartColors(){
   const css=getComputedStyle(document.documentElement);

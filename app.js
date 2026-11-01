@@ -100,6 +100,13 @@ function handleLine(line){
     return;
   }
 
+  m=line.match(/^CAL:OUT:CODES:(\d+):(\d+)/);
+  if(m){
+    if($('outDacCode4'))$('outDacCode4').value=m[1];
+    if($('outDacCode20'))$('outDacCode20').value=m[2];
+    return;
+  }
+
   m=line.match(/^CAL:(OUT|IN):VALID:([01])/);
   if(m){
     if(m[1]==='OUT')state.deviceOutConfigValid=m[2]==='1';
@@ -288,12 +295,40 @@ async function sendEngineeringScale(prefix){
   await send(`CAL:${ch}:RANGE:${s.min}:${s.max}:${protocolToken(s.unit)}`);
   await send(`CAL:${ch}:CURRENT:${s.currentMin}:${s.currentMax}`);
 }
+async function testOutputDacCode(code){
+  code=Math.round(clamp(Number(code),0,4095));
+  return send(`CAL:OUT:TESTCODE:${code}`);
+}
+async function saveOutputDacCodes(){
+  const c4=Math.round(Number($('outDacCode4').value));
+  const c20=Math.round(Number($('outDacCode20').value));
+  if(!Number.isFinite(c4)||!Number.isFinite(c20)||c4<0||c20>4095||c20<=c4){
+    alert('Los códigos DAC deben ser válidos y el código de 20 mA debe ser mayor al de 4 mA.');
+    return false;
+  }
+
+  // Primero guardamos la escala de ingeniería y luego los dos extremos reales.
+  applyScale('out');
+  await sendEngineeringScale('out');
+
+  const ok=await send(`CAL:OUT:CODES:${c4}:${c20}`);
+  if(ok){
+    state.awaitingCalibrationRead=true;
+    await send('CAL:READ');
+    return true;
+  }
+  return false;
+}
 async function sendCalibration(prefix){
   applyScale(prefix);
   const s=prefix==='out'?state.outScale:state.inScale;
   const ch=prefix==='out'?'OUT':'IN';
   await sendEngineeringScale(prefix);
-  await send(`CAL:${ch}:POINTS:${s.measuredLow}:${s.measuredHigh}`);
+  if(prefix==='out'){
+    await saveOutputDacCodes();
+  }else{
+    await send(`CAL:${ch}:POINTS:${s.measuredLow}:${s.measuredHigh}`);
+  }
 }
 async function syncMissingEngineeringConfig(){
   let changed=false;
@@ -311,6 +346,11 @@ async function syncMissingEngineeringConfig(){
     state.deviceInConfigValid=true;
     setSerialDiag('configuración del instrumento migrada y sincronizada.');
   }
+}
+
+function adjustDacCode(id,delta){
+  const el=$(id);if(!el)return;
+  el.value=Math.round(clamp((Number(el.value)||0)+delta,0,4095));
 }
 
 function chartColors(){
@@ -1264,7 +1304,24 @@ function bind(){
   $('deviceSlotSelect').onchange=updateDeviceSlotWarning;
   $('confirmDeviceSaveBtn').onclick=confirmDeviceSave;
   $('closeDeviceSaveDialog').onclick=()=>{state.pendingUploadProfile=null;$('deviceSaveDialog').close();};
-  ['out','in'].forEach(p=>{$(p+'SensorType').onchange=()=>setPresetFromType(p);['SensorUnit','SensorMin','SensorMax','CurrentMin','CurrentMax','MeasuredLow','MeasuredHigh'].forEach(s=>$(p+s).oninput=()=>updateCalInfo(p,scaleFromInputs(p)));});$('applyOutScaleBtn').onclick=()=>applyScale('out');$('applyInScaleBtn').onclick=()=>applyScale('in');$('sendOutCalBtn').onclick=()=>sendCalibration('out');$('sendInCalBtn').onclick=()=>sendCalibration('in');
+  ['out','in'].forEach(p=>{
+    $(p+'SensorType').onchange=()=>setPresetFromType(p);
+    ['SensorUnit','SensorMin','SensorMax','CurrentMin','CurrentMax','MeasuredLow','MeasuredHigh'].forEach(s=>{
+      const el=$(p+s);
+      if(el)el.oninput=()=>updateCalInfo(p,scaleFromInputs(p));
+    });
+  });
+  $('applyOutScaleBtn').onclick=()=>applyScale('out');
+  $('applyInScaleBtn').onclick=()=>applyScale('in');
+  $('sendInCalBtn').onclick=()=>sendCalibration('in');
+  $('testOut4Btn').onclick=()=>testOutputDacCode($('outDacCode4').value);
+  $('testOut20Btn').onclick=()=>testOutputDacCode($('outDacCode20').value);
+  $('saveOutDacCodesBtn').onclick=saveOutputDacCodes;
+  document.querySelectorAll('[data-dac-adjust]').forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.dacTarget;
+    adjustDacCode(id,Number(b.dataset.dacAdjust));
+    await testOutputDacCode($(id).value);
+  });
   $('terminalSendBtn').onclick=()=>{const v=$('terminalInput').value.trim();if(v){send(v);$('terminalInput').value='';}};$('clearTerminalBtn').onclick=()=>{$('terminal').textContent='';};$('exportCsvBtn').onclick=exportCsv;
   $('themeBtn').onclick=()=>{const root=document.documentElement;const next=root.dataset.theme==='dark'?'light':'dark';if(next==='dark')root.dataset.theme='dark';else delete root.dataset.theme;localStorage.setItem('simcorr_theme',next);refreshChartsForTheme();};
   $('fullscreenBtn').onclick=()=>requestImmersiveMode();

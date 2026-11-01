@@ -69,6 +69,7 @@
     PROFILE:DELETE:<slot>
     PROFILE:LIST
 
+    GET:CAL
     CAL:READ
     CAL:SAVE
     CAL:OUT:TYPE:<type>
@@ -149,7 +150,7 @@ static const uint8_t EEPROM_ADDR  = 0x50;
 // ============================================================================
 // USB_BAUD se usa solo para monitor serie/diagnóstico.
 // BT_BAUD debe coincidir con la velocidad configurada en el HC-05.
-static const char FIRMWARE_VERSION[] = "1.2.1";
+static const char FIRMWARE_VERSION[] = "1.2.2";
 static const uint8_t PROTOCOL_VERSION = 2;
 static const uint32_t USB_BAUD = 115200UL;
 static const uint32_t BT_BAUD  = 9600UL;
@@ -1667,6 +1668,15 @@ static void handleCalibrationCommand(Stream &src, char *savePtr) {
     eng.maxMilli = mx;
     copyUnit(eng.unit, unitS);
     engineeringValidFlags |= validMask;
+
+    // TYPE se recibe inmediatamente antes de RANGE desde la PWA. Guardamos
+    // aquí el bloque completo, de modo que "Aplicar escala" queda persistido.
+    if (!saveCalibration()) {
+      replyError(src, F("EEPROM_WRITE"));
+      return;
+    }
+
+    buzzerConfirmCalibration();
     replyOK(src);
     return;
   }
@@ -1872,6 +1882,15 @@ static void processCommand(Stream &src, const char *line) {
       sendStatus(src);
       return;
     }
+
+    // GET:CAL evita depender del subparser CAL:* para la lectura completa y
+    // facilita compatibilidad con futuras versiones de la PWA.
+    if (what && (!strcmp(what, "CAL") || !strcmp(what, "CALIBRATION"))) {
+      printCalibration(src);
+      replyOK(src);
+      return;
+    }
+
     replyError(src, F("GET_UNKNOWN"));
     return;
   }

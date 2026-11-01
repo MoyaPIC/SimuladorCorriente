@@ -7,7 +7,7 @@
   <meta name="description" content="Simulink - simulación y medición 4-20 mA mediante Web Serial y HC-05">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.10.2">
+  <link rel="stylesheet" href="styles.css?v=1.10.3">
   <title>Simulink · 4–20 mA</title>
 </head>
 <body>
@@ -15,7 +15,7 @@
   <div class="app-splash-card">
     <div class="splash-brand">UconnectME</div>
     <div class="splash-division">Instrumentación</div>
-    <div class="splash-product">Simulink <span>v1.10.2</span></div>
+    <div class="splash-product">Simulink <span>v1.10.3</span></div>
     <div class="splash-loader" aria-hidden="true"><i id="splashProgressBar"></i></div>
     <div id="splashProgressText" class="splash-progress-text">Iniciando instrumento… 0%</div>
   </div>
@@ -364,13 +364,41 @@
           <label>Máximo ingeniería<input id="outSensorMax" type="number" step="0.001" value="100"></label>
           <label>Corriente mínima mA<input id="outCurrentMin" type="number" value="4.0" readonly></label>
           <label>Corriente máxima mA<input id="outCurrentMax" type="number" value="20.0" readonly></label>
-          <label>Medida real en punto 4 mA<input id="outMeasuredLow" type="number" step="0.001" value="4.000"></label>
-          <label>Medida real en punto 20 mA<input id="outMeasuredHigh" type="number" step="0.001" value="20.000"></label>
+          <div class="dac-cal-field">
+            <span>Código DAC para 4.00 mA</span>
+            <div class="dac-cal-row">
+              <button class="btn small" type="button" data-dac-target="outDacCode4" data-dac-adjust="-10">−10</button>
+              <button class="btn small" type="button" data-dac-target="outDacCode4" data-dac-adjust="-1">−1</button>
+              <input id="outDacCode4" type="number" min="0" max="4095" step="1" value="780">
+              <button class="btn small" type="button" data-dac-target="outDacCode4" data-dac-adjust="1">+1</button>
+              <button class="btn small" type="button" data-dac-target="outDacCode4" data-dac-adjust="10">+10</button>
+              <button id="testOut4Btn" class="btn primary small" type="button">Probar</button>
+            </div>
+          </div>
+          <div class="dac-cal-field">
+            <span>Código DAC para 20.00 mA</span>
+            <div class="dac-cal-row">
+              <button class="btn small" type="button" data-dac-target="outDacCode20" data-dac-adjust="-10">−10</button>
+              <button class="btn small" type="button" data-dac-target="outDacCode20" data-dac-adjust="-1">−1</button>
+              <input id="outDacCode20" type="number" min="0" max="4095" step="1" value="3990">
+              <button class="btn small" type="button" data-dac-target="outDacCode20" data-dac-adjust="1">+1</button>
+              <button class="btn small" type="button" data-dac-target="outDacCode20" data-dac-adjust="10">+10</button>
+              <button id="testOut20Btn" class="btn primary small" type="button">Probar</button>
+            </div>
+          </div>
+        </div>
+        <input id="outMeasuredLow" type="hidden" value="4.000">
+        <input id="outMeasuredHigh" type="hidden" value="20.000">
+        <div class="dac-cal-help">
+          <b>Calibración de salida</b>
+          <span>1. Pulsá <b>Probar</b> en 4 mA y ajustá el código hasta leer exactamente 4.00 mA.</span>
+          <span>2. Repetí el ajuste para 20.00 mA.</span>
+          <span>3. Guardá ambos códigos. La salida quedará interpolada linealmente entre esos extremos.</span>
         </div>
         <div id="outCalibrationInfo" class="cal-info"></div>
         <div class="button-grid two">
-          <button id="applyOutScaleBtn" class="btn primary">Aplicar salida</button>
-          <button id="sendOutCalBtn" class="btn">Enviar calibración</button>
+          <button id="applyOutScaleBtn" class="btn">Aplicar escala</button>
+          <button id="saveOutDacCodesBtn" class="btn primary">Guardar códigos DAC</button>
         </div>
       </section>
 
@@ -459,6 +487,6 @@
 
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js" defer></script>
-<script src="app.js?v=1.10.2" defer></script>
+<script src="app.js?v=1.10.3" defer></script>
 </body>
 </html>

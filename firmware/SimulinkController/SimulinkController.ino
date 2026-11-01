@@ -74,6 +74,8 @@
     CAL:OUT:TYPE:<type>
     CAL:OUT:RANGE:<min>:<max>:<unit>
     CAL:OUT:CURRENT:4:20
+    CAL:OUT:TESTCODE:<0..4095>
+    CAL:OUT:CODES:<code_4mA>:<code_20mA>
     CAL:OUT:POINTS:<medido_4mA>:<medido_20mA>
     CAL:OUT:CODES:<codigo_4mA>:<codigo_20mA>
     CAL:IN:TYPE:<type>
@@ -147,7 +149,7 @@ static const uint8_t EEPROM_ADDR  = 0x50;
 // ============================================================================
 // USB_BAUD se usa solo para monitor serie/diagnóstico.
 // BT_BAUD debe coincidir con la velocidad configurada en el HC-05.
-static const char FIRMWARE_VERSION[] = "1.2.0";
+static const char FIRMWARE_VERSION[] = "1.2.1";
 static const uint8_t PROTOCOL_VERSION = 2;
 static const uint32_t USB_BAUD = 115200UL;
 static const uint32_t BT_BAUD  = 9600UL;
@@ -1282,9 +1284,10 @@ static void printCalibration(Stream &s) {
 // ============================================================================
 // 19. CALIBRACIÓN DE ENTRADA Y SALIDA
 // ============================================================================
-// Recalibra la salida a partir de dos mediciones reales hechas por el usuario.
-// Ejemplo: se ordenan 4 y 20 mA, se miden 4.07 y 19.82 mA, y con esos datos se
-// corrigen los dos códigos extremos del DAC.
+// Corrección automática heredada a partir de dos mediciones.
+// Este método sirve para pequeños errores de ganancia/offset, pero no puede
+// descubrir el código de 4 mA cuando el circuito tiene un piso físico.
+// Para la calibración completa usar CAL:OUT:TESTCODE + CAL:OUT:CODES.
 static bool calibrateOutputFromMeasured(float measuredAt4,
                                         float measuredAt20) {
   if (measuredAt20 <= measuredAt4 + 0.01f) return false;
@@ -1691,6 +1694,33 @@ static void handleCalibrationCommand(Stream &src, char *savePtr) {
   }
 
   if (isOut) {
+    // CAL:OUT:TESTCODE:<0..4095>
+    // Escribe temporalmente un código DAC crudo para calibrar los extremos
+    // con un multímetro. No modifica la memoria del equipo.
+    if (!strcmp(op, "TESTCODE")) {
+      char *codeS = strtok_r(NULL, ":", &savePtr);
+      if (!codeS) {
+        replyError(src, F("CAL_TESTCODE_ARGS"));
+        return;
+      }
+
+      long code = atol(codeS);
+      if (code < 0 || code > 4095) {
+        replyError(src, F("DAC_CODE_RANGE"));
+        return;
+      }
+
+      profileStop();
+      outputEnabled = true;
+      if (!mcp4725WriteCode((uint16_t)code)) {
+        replyError(src, F("DAC_WRITE"));
+        return;
+      }
+
+      replyOK(src);
+      return;
+    }
+
     if (!strcmp(op, "POINTS")) {
       char *m4S = strtok_r(NULL, ":", &savePtr);
       char *m20S = strtok_r(NULL, ":", &savePtr);

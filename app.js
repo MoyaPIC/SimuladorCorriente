@@ -32,7 +32,7 @@ const state={
   installPrompt:null,rampTrace:[],
   deviceProfiles:Array(16).fill(null),deviceSlotNames:{},awaitingProfileList:false,pendingUploadIndex:null,pendingUploadProfile:null,
   customAddMode:false,customSelectedIndex:0,customDraggingIndex:null,rampPane:'config',
-  deviceProtocol:1,awaitingCalibrationRead:false,deviceOutConfigValid:null,deviceInConfigValid:null
+  deviceProtocol:1,awaitingCalibrationRead:false,deviceOutConfigValid:null,deviceInConfigValid:null,engineeringSyncBusy:false
 };
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function engToMa(v,s){const lo=Math.min(s.min,s.max),hi=Math.max(s.min,s.max),cv=clamp(Number(v),lo,hi);const span=s.max-s.min||1;const ma=s.currentMin+(cv-s.min)*(s.currentMax-s.currentMin)/span;return clamp(ma,4,20);}
@@ -71,13 +71,14 @@ function simulateCommand(line){
   if(line.startsWith('PROFILE:DELETE:')){const slot=Number(line.split(':')[2]);if(slot>=1&&slot<=16)state.deviceProfiles[slot-1]=null;return 'OK';}
   if(line.startsWith('PROFILE:RUN:'))return 'OK';
   if(line.startsWith('PROFILE:'))return 'OK';
-  if(line==='CAL:READ'){
+  if(line==='CAL:READ'||line==='GET:CAL'){
     return[
       'CAL:PROTO:2',
       'CAL:OUT:VALID:1',
       `CAL:OUT:CFG:${state.outScale.type}:${state.outScale.min}:${state.outScale.max}:${protocolToken(state.outScale.unit)}`,
       'CAL:IN:VALID:1',
       `CAL:IN:CFG:${state.inScale.type}:${state.inScale.min}:${state.inScale.max}:${protocolToken(state.inScale.unit)}`,
+      `CAL:OUT:CODES:${$('outDacCode4')?.value||780}:${$('outDacCode20')?.value||3990}`,
       'OK'
     ];
   }
@@ -94,7 +95,15 @@ function handleLine(line){
     renderMain();
     return;
   }
-  let m=line.match(/^CAL:PROTO:(\d+)/);
+
+  let m=line.match(/^INFO:FW=([^:]+):PROTO=(\d+)/);
+  if(m){
+    state.deviceProtocol=Number(m[2])||1;
+    setSerialDiag('firmware '+m[1]+' · protocolo '+state.deviceProtocol+'.');
+    return;
+  }
+
+  m=line.match(/^CAL:PROTO:(\d+)/);
   if(m){
     state.deviceProtocol=Number(m[1])||1;
     return;
@@ -111,6 +120,7 @@ function handleLine(line){
   if(m){
     if(m[1]==='OUT')state.deviceOutConfigValid=m[2]==='1';
     else state.deviceInConfigValid=m[2]==='1';
+    maybeSyncMissingEngineeringConfig();
     return;
   }
 
@@ -216,10 +226,10 @@ async function connectSerial(){
 
     readLoop();
     await send('GET:STATUS');
-    state.awaitingCalibrationRead=true;
     state.deviceOutConfigValid=null;
     state.deviceInConfigValid=null;
-    await send('CAL:READ');
+    await send('INFO');
+    await send('GET:CAL');
     await requestDeviceProfiles();
   }catch(e){
     log(e.message||String(e),'ERR');
@@ -313,8 +323,9 @@ async function saveOutputDacCodes(){
 
   const ok=await send(`CAL:OUT:CODES:${c4}:${c20}`);
   if(ok){
-    state.awaitingCalibrationRead=true;
-    await send('CAL:READ');
+    await send('GET:CAL');
+    const status=$('outCalibrationStatus');
+    if(status)status.textContent='Códigos DAC guardados correctamente.';
     return true;
   }
   return false;
@@ -330,22 +341,28 @@ async function sendCalibration(prefix){
     await send(`CAL:${ch}:POINTS:${s.measuredLow}:${s.measuredHigh}`);
   }
 }
+async function maybeSyncMissingEngineeringConfig(){
+  if(state.engineeringSyncBusy)return;
+  if(state.deviceOutConfigValid===null||state.deviceInConfigValid===null)return;
+  if(state.deviceOutConfigValid!==false&&state.deviceInConfigValid!==false)return;
+
+  state.engineeringSyncBusy=true;
+  try{
+    if(state.deviceOutConfigValid===false){
+      await sendEngineeringScale('out');
+      state.deviceOutConfigValid=true;
+    }
+    if(state.deviceInConfigValid===false){
+      await sendEngineeringScale('in');
+      state.deviceInConfigValid=true;
+    }
+    setSerialDiag('configuración de ingeniería sincronizada con el instrumento.');
+  }finally{
+    state.engineeringSyncBusy=false;
+  }
+}
 async function syncMissingEngineeringConfig(){
-  let changed=false;
-  if(state.deviceOutConfigValid===false){
-    await sendEngineeringScale('out');
-    changed=true;
-  }
-  if(state.deviceInConfigValid===false){
-    await sendEngineeringScale('in');
-    changed=true;
-  }
-  if(changed){
-    await send('CAL:SAVE');
-    state.deviceOutConfigValid=true;
-    state.deviceInConfigValid=true;
-    setSerialDiag('configuración del instrumento migrada y sincronizada.');
-  }
+  return maybeSyncMissingEngineeringConfig();
 }
 
 function adjustDacCode(id,delta){
@@ -1311,8 +1328,28 @@ function bind(){
       if(el)el.oninput=()=>updateCalInfo(p,scaleFromInputs(p));
     });
   });
-  $('applyOutScaleBtn').onclick=()=>applyScale('out');
-  $('applyInScaleBtn').onclick=()=>applyScale('in');
+  $('applyOutScaleBtn').onclick=async()=>{
+    applyScale('out');
+    if(state.connected||state.simulation){
+      await sendEngineeringScale('out');
+      const status=$('outCalibrationStatus');
+      if(status)status.textContent='Escala de salida guardada en el instrumento.';
+    }else{
+      const status=$('outCalibrationStatus');
+      if(status)status.textContent='Escala aplicada en la app. Conectá el instrumento para guardarla.';
+    }
+  };
+  $('applyInScaleBtn').onclick=async()=>{
+    applyScale('in');
+    if(state.connected||state.simulation){
+      await sendEngineeringScale('in');
+      const status=$('inCalibrationStatus');
+      if(status)status.textContent='Escala de entrada guardada en el instrumento.';
+    }else{
+      const status=$('inCalibrationStatus');
+      if(status)status.textContent='Escala aplicada en la app. Conectá el instrumento para guardarla.';
+    }
+  };
   $('sendInCalBtn').onclick=()=>sendCalibration('in');
   $('testOut4Btn').onclick=()=>testOutputDacCode($('outDacCode4').value);
   $('testOut20Btn').onclick=()=>testOutputDacCode($('outDacCode20').value);
